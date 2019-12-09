@@ -169,7 +169,7 @@ namespace gloops {
 			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH
 		};
 
-		ShaderCollection(const std::string& folder_path);
+		ShaderCollection(const std::string& folder_path = "");
 		
 		const ShaderProgram& get(Name name);
 

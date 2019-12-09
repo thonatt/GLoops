@@ -68,6 +68,8 @@ namespace gloops {
 
 	struct VertexAttribute {
 
+		VertexAttribute() = default;
+
 		template<typename T>
 		VertexAttribute(const std::vector<T>& v, GLuint index) :
 			index(index), 
@@ -126,8 +128,9 @@ namespace gloops {
 		void draw() const;
 
 		static MeshGL getSphere(float radius = 1.0f, const v3f& center = { 0,0,0 }, uint precision = 50);
+		static MeshGL getCube(const Box& box);
 		static MeshGL getCubeLines(const Box& box);
-		static MeshGL getAxis(const m4f& transformation);
+		static MeshGL getAxis(const m4f& transformation = m4f::Identity());
 
 		GLenum mode = GL_FILL;
 		mutable GLenum primitive = GL_TRIANGLES;

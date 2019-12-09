@@ -106,10 +106,11 @@ namespace gloops {
 
 		template<CallbackType type, typename F>
 		void setCallback(F && f) {
-			GLFWcallbackSignature<type>::setup(window, std::forward<F>(f));
+			GLFWcallbackSignature<type>::setup(window.get(), std::forward<F>(f));
 		}
 
-		GLFWwindow * window = nullptr;
+		std::shared_ptr<GLFWwindow> window;
+		//GLFWwindow * window = nullptr;
 		v2i size;
 	};
 
@@ -136,7 +137,7 @@ namespace gloops {
 		UpdateFunc updateFunc;
 		RenderingFunc renderingFunc;
 		std::string win_name;
-		v2i gui_render_size;
+		v2f gui_render_size;
 		bool inFocus = false, shouldUpdate = false, showGui = true, showInput = false, showDebug = false;
 	};
 

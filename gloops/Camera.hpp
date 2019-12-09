@@ -139,6 +139,7 @@ namespace gloops {
 		{
 			T y = T(1) / std::tan(fovy / T(2));
 			T x = y / aspect;
+
 			T a = (zNear + zFar) / (zNear - zFar);
 			T b = T(2) * zNear * zFar / (zNear - zFar);
 			T c = T(-1);
@@ -152,6 +153,12 @@ namespace gloops {
 
 			return out;
 		}
+
+		//static m4 perspective(const v2& fovs, T zNear, T zFar)
+		//{
+		//	T aspect = std::tan(fovs.x() / T(2)) / std::tan(fovs.y() / T(2));
+		//	return perspective(fovs.y(), aspect, zNear, zFar);
+		//}
 
 		void setFovy(T fov)
 		{
@@ -282,9 +289,27 @@ namespace gloops {
 		{		
 			setRotation(rotation);
 			setPosition(position);
-			T fovy = static_cast<T>(2)* std::atan(h / (static_cast<T>(2)* focal_pix));
+			T fovy = T(2)* std::atan(h / (T(2)* focal_pix));
 			T aspect = T(w) / T(h);
 			setPerspective(fovy, aspect, near, far);
+			setupDerivatives();
+		}
+
+		RaycastingCamera(const Quat& rotation, const v3& position, const v2& focals_pix, int w, int h,
+			T near = T(0.01), T far = T(100.0))
+			: _w(w), _h(h)
+		{
+			setRotation(rotation);
+			setPosition(position);
+			T fovx = T(2) * std::atan(w / (T(2) * focals_pix.x()));
+			T fovy = T(2) * std::atan(h / (T(2) * focals_pix.y()));
+		
+			T aspect_focals = std::tan(fovx / T(2)) / std::tan(fovy / T(2));
+
+			//T aspect = T(w) / T(h);
+			//std::cout << "aspect check : " << aspect << " " << aspect_focals << std::endl;
+			
+			setPerspective(fovy, aspect_focals, near, far);
 			setupDerivatives();
 		}
 
@@ -416,6 +441,8 @@ namespace gloops {
 
 		enum Status { IDLE, ROTATION, TRANSLATION, ROLL };
 
+		Trackball() = default;
+
 		Trackball(const Cam& cam, T r)
 		{
 			eye = cam.position();
@@ -514,7 +541,7 @@ namespace gloops {
 		void update(const Input& i)
 		{
 			v2d vp_diag = i.viewport().diagonal();
-			setAspect(vp_diag[0] / vp_diag[1]);
+			setAspect(T(vp_diag[0] / vp_diag[1]));
 
 			updateRadius(i);
 			updateRotation(i);
@@ -589,7 +616,7 @@ namespace gloops {
 		{
 			if (status == IDLE && i.keyActive(GLFW_KEY_LEFT_CONTROL) && i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
 
-				RaycastingCamera<T> cam(getCamera(), i.viewport().width(), i.viewport().height());
+				RaycastingCamera<T> cam(getCamera(), (int)i.viewport().width(), (int)i.viewport().height());
 				auto ray = cam.getRay(i.mousePosition<float>());
 
 				Hit hit = raycaster.intersect(ray);
@@ -602,7 +629,7 @@ namespace gloops {
 
 		void updateNearFar(const Input& i) {
 			if (i.keyActive(GLFW_KEY_LEFT_CONTROL) && i.scrollY() ) {
-				T change = pow(T(1.25), i.scrollY());
+				T change = pow(T(1.25), T(i.scrollY()));
 				if (i.keyActive(GLFW_KEY_LEFT_SHIFT)) {
 					setFar(change * _camera.zFar());
 				} else {

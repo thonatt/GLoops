@@ -16,6 +16,8 @@ namespace gloops {
 	class Image {
 	public:
 
+		using Pixel = Eigen::Matrix<T, N, 1>;
+
 		int w() const
 		{
 			return _w;
@@ -31,16 +33,25 @@ namespace gloops {
 			return N;
 		}
 
-		v4f pixel(int x, int y) const
+		const Pixel& pixel(int x, int y) const
 		{
-			const T* src = reinterpret_cast<const T*>(data() + N * (static_cast<size_t>(y)* w() + x));
+			return _data[static_cast<size_t>(y)* w() + x];
+		}
+
+		Pixel& pixel(int x, int y)
+		{
+			return _data[static_cast<size_t>(y)* w() + x];
+		}
+
+		v4f pixel4f(int x, int y) const {
+			const Pixel& p = pixel(x, y);
 
 			switch (N)
 			{
-			case 1: return v4f((float)src[0], 0, 0, 0);
-			case 2: return v4f((float)src[0], (float)src[1], 0, 0);
-			case 3: return v4f((float)src[0], (float)src[1], (float)src[2], 0);
-			case 4: return v4f((float)src[0], (float)src[1], (float)src[2], (float)src[3]);
+			case 1: return v4f((float)p[0], 0, 0, 0);
+			case 2: return v4f((float)p[0], (float)p[1], 0, 0);
+			case 3: return v4f((float)p[0], (float)p[1], (float)p[2], 0);
+			case 4: return v4f((float)p[0], (float)p[1], (float)p[2], (float)p[3]);
 			default:
 				return v4f::Zero();
 			}
@@ -50,7 +61,7 @@ namespace gloops {
 		{
 			return (x >= 0 && y >= 0 && x < w() && y < h());
 		}
-		
+
 		void load(const std::string & path)
 		{
 			static_assert(N == 3 && std::is_same_v<T, uchar>, "sbti image loads only uchar3");
@@ -77,7 +88,12 @@ namespace gloops {
 
 		const uchar *data() const
 		{
-			return _data.data();
+			return reinterpret_cast<const uchar*>(_data.data());
+		}
+
+		uchar* data() 
+		{
+			return reinterpret_cast<uchar*>(_data.data());
 		}
 
 		const std::string& getPath() const
@@ -89,7 +105,7 @@ namespace gloops {
 			if (w == _w && h == _h) {
 				return;
 			}
-			_data.resize(w * h * N);
+			_data.resize(w * static_cast<size_t>(h) * N);
 			_w = w;
 			_h = h;
 		}
@@ -97,22 +113,13 @@ namespace gloops {
 
 	private:
 
-		//void release()
-		//{
-		//	if (data_ptr) {
-		//		stbi_image_free(data_ptr);
-		//	}
-		//}
-
 		std::string _path;
-		std::vector<T> _data;
+		std::vector<Pixel> _data;
 		int _w = 0, _h = 0;
-
-		//uchar * data_ptr = nullptr;
 	};
 
 
-	using Image3u = Image<uchar, 3>;
+	using Image3b = Image<uchar, 3>;
 
 	struct ImageInfosData {
 		ImageInfosData(int w, int h, int n, const void* data)
@@ -240,7 +247,7 @@ namespace gloops {
 	struct DefaultTexParams;
 
 	template<>
-	struct DefaultTexParams<Image3u> : TexParams {
+	struct DefaultTexParams<Image3b> : TexParams {
 	};
 
 	class Texture : public TexParams {
@@ -311,16 +318,14 @@ namespace gloops {
 		void bind(GLenum target = GL_FRAMEBUFFER) const;
 		void bindDraw() const;
 		void bindDraw(GLenum attachment) const;
+		void bindRead(GLenum attachment) const;
 
-		void bindTexture(GLuint slot, GLenum attachment = GL_COLOR_ATTACHMENT0) const;
-	
 		void clear(GLbitfield mask = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT), const v4f & color = { 0,0,0,0 } );
 
 		GLuint getId() const;
+
 		const Texture& getAttachment(GLenum attachment = GL_COLOR_ATTACHMENT0) const;
 		Texture& getAttachment(GLenum attachment = GL_COLOR_ATTACHMENT0);
-
-		GLuint getAttachmentId(GLenum attachment = GL_COLOR_ATTACHMENT0) const;
 
 		int w() const;
 		int h() const;
@@ -328,7 +333,7 @@ namespace gloops {
 		void blitFrom(
 			const Framebuffer& src,  
 			GLenum attach_from = GL_COLOR_ATTACHMENT0,
-			int attach_to = 0, 
+			GLenum attach_to = GL_COLOR_ATTACHMENT0,
 			GLenum filter = GL_NEAREST,
 			GLbitfield mask = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 		);
@@ -336,8 +341,14 @@ namespace gloops {
 		void blitFrom(
 			const Texture& tex, 
 			GLenum filter = GL_NEAREST,
-			int attach_to = 0
+			GLenum attach_to = GL_COLOR_ATTACHMENT0
 		);
+
+		template<typename T, int N>
+		void readBack(Image<T, N>& img, int width, int height, int x, int y, GLenum attach_from = GL_COLOR_ATTACHMENT0) const;
+
+		template<typename T, int N>
+		void readBack(Image<T, N>& img, GLenum attach_from = GL_COLOR_ATTACHMENT0) const;
 
 		static void bindDefault(GLenum target = GL_FRAMEBUFFER);
 
@@ -367,7 +378,7 @@ namespace gloops {
 		void load_from_disk();
 
 		std::shared_ptr<Texture> getTex();
-		std::shared_ptr<Image3u> getImage();
+		std::shared_ptr<Image3b> getImage();
 
 		bool ready() const;
 
@@ -379,7 +390,7 @@ namespace gloops {
 		void update_to_gpu();
 
 		std::shared_ptr<Texture> tex_ptr;		
-		std::shared_ptr<Image3u> img_ptr;
+		std::shared_ptr<Image3b> img_ptr;
 		std::atomic<bool> img_loaded = false;
 		std::string path;
 		bool gpu_mem_allocated = false, all_data_transferred = false;
@@ -440,6 +451,20 @@ namespace gloops {
 			bind();
 			uploadToGPU(0, 0, infos.w(), infos.h(), infos.data());
 		}
+	}
+
+	template<typename T, int N>
+	inline void Framebuffer::readBack(Image<T, N>& img, int width, int height, int x, int y, GLenum attach_from) const
+	{
+		img.allocate(width, height);
+		bindRead(attach_from);
+		glReadPixels(x, y, width, height, getAttachment(attach_from).format, getAttachment(attach_from).type, img.data());
+	}
+
+	template<typename T, int N>
+	inline void Framebuffer::readBack(Image<T, N>& img, GLenum attach_from) const
+	{
+		readBack(img, w(), h(), 0, 0, attach_from);
 	}
 
 

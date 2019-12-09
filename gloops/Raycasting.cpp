@@ -46,25 +46,25 @@ namespace gloops {
 
 	}
 
-	void Raycaster::addMesh(const Mesh& mesh)
+	void Raycaster::addMeshInternal(const Mesh& mesh)
 	{
 		GeometryPtr geometry = GeometryPtr(rtcNewGeometry(
 			device.get(), RTCGeometryType::RTC_GEOMETRY_TYPE_TRIANGLE), rtcReleaseGeometry);
 
+		using Triangle = Mesh::Tri;
+		using Vertice = Mesh::Vert;
+
 		const auto& tris = mesh.getTriangles();
 		const auto& verts = mesh.getVertices();
 
-		using Tri = Mesh::Tri;
-		using Vert = Mesh::Vert;
-
-		Tri* dst_tris = reinterpret_cast<Tri*>(rtcSetNewGeometryBuffer(
-			geometry.get(), RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, sizeof(Tri), tris.size()));
+		Triangle* dst_tris = reinterpret_cast<Triangle*>(rtcSetNewGeometryBuffer(
+			geometry.get(), RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, sizeof(Triangle), tris.size()));
 		for (uint i = 0; i < tris.size(); ++i, ++dst_tris) {
 			*dst_tris = tris[i];
 		}
 
-		Vert* dst_verts = reinterpret_cast<Vert*>(rtcSetNewGeometryBuffer(
-			geometry.get(), RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(Vert), verts.size()));
+		Vertice* dst_verts = reinterpret_cast<Vertice*>(rtcSetNewGeometryBuffer(
+			geometry.get(), RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(Vertice), verts.size()));
 		for (uint i = 0; i < verts.size(); ++i, ++dst_verts) {
 			*dst_verts = verts[i];
 		}

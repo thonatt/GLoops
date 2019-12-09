@@ -36,6 +36,8 @@ namespace gloops {
 		bool buttonClicked(int button) const;
 		bool buttonUnclicked(int button) const;
 
+		bool insideViewport() const;
+
 		template<typename T = double>
 		Eigen::Matrix<T, 2, 1> mousePosition() const {
 			return _mousePosition.template cast<T>();

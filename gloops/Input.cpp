@@ -27,6 +27,11 @@ namespace gloops {
 		return (mouseStatusPrevious[button] == GLFW_PRESS || mouseStatusPrevious[button] == GLFW_REPEAT) && mouseStatus[button] == GLFW_RELEASE;
 	}
 
+	bool Input::insideViewport() const
+	{
+		return (_mousePosition.array() >= 0).all() && (_mousePosition.array() < viewport().diagonal().array()).all();
+	}
+
 	const double& Input::scrollY() const
 	{
 		return _mouseScroll[1];

@@ -1,10 +1,10 @@
-#requires CURRENT_TARGET and GLOOPS_PATH to be set
+#requires CURRENT_TARGET and GLOOPS_DIR to be set
 #defines gloopsFiles gloopsShaders gloopsImguiFiles
 
-set(GLOOPS_EXTLIBS_PATH "${GLOOPS_PATH}/extlibs/")
-set(GLOOPS_SRC_PATH "${GLOOPS_PATH}/gloops/")
+set(GLOOPS_EXTLIBS_PATH "${GLOOPS_DIR}/extlibs/")
+set(GLOOPS_SRC_PATH "${GLOOPS_DIR}/gloops/")
 
-include_directories( ${GLOOPS_PATH} ${GLOOPS_EXTLIBS_PATH} )
+include_directories( ${GLOOPS_DIR} ${GLOOPS_EXTLIBS_PATH} )
 
 # GLOOPS CORE
 file(GLOB gloopsFiles "${GLOOPS_SRC_PATH}*.hpp" "${GLOOPS_SRC_PATH}*.cpp")
@@ -37,6 +37,8 @@ target_sources(${CURRENT_TARGET} PUBLIC ${gloopsFiles} ${gloopsShaders} ${gloops
 # GLEW
 find_package(OpenGL REQUIRED)
 
+set(GLEW_INCLUDE_DIR "${GLOOPS_EXTLIBS_PATH}/glew-2.1.0/include/")
+set(GLEW_SHARED_LIBRARY_RELEASE "${GLOOPS_EXTLIBS_PATH}/glew-2.1.0/lib/Release/x64/glew32.lib")
 find_package(GLEW REQUIRED)
 target_link_libraries(${CURRENT_TARGET} ${OPENGL_gl_LIBRARY} GLEW::GLEW)
 

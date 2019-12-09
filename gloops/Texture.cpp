@@ -28,7 +28,7 @@ namespace gloops {
 
 	Texture Texture::fromPath(const std::string& img_path, TexParams params)
 	{
-		Image3u img;
+		Image3b img;
 		img.load(img_path);
 		return Texture(img, params);
 	}
@@ -236,9 +236,10 @@ namespace gloops {
 		glViewport(0, 0, w(), h());
 	}
 
-	void Framebuffer::bindTexture(GLuint slot, GLenum attachment) const
+	void Framebuffer::bindRead(GLenum attachment) const
 	{
-		attachments.at(attachment).bindSlot(slot);
+		bind(GL_READ_FRAMEBUFFER);
+		glReadBuffer(attachment);
 	}
 
 	void Framebuffer::clear(GLbitfield mask, const v4f & c)
@@ -263,11 +264,6 @@ namespace gloops {
 		return attachments.at(attachment);
 	}
 
-	GLuint Framebuffer::getAttachmentId(GLenum attachment) const
-	{
-		return getAttachment(attachment).getId();
-	}
-
 	int Framebuffer::w() const
 	{
 		return _w;
@@ -278,17 +274,16 @@ namespace gloops {
 		return _h;
 	}
 
-	void Framebuffer::blitFrom(const Framebuffer& src, GLenum attach_from, int attach_to, GLenum filter, GLbitfield mask)
+	void Framebuffer::blitFrom(const Framebuffer& src, GLenum attach_from, GLenum attach_to, GLenum filter, GLbitfield mask)
 	{
 		gl_check();
 
 		bindDraw(attach_to);
 	
-		src.bind(GL_READ_FRAMEBUFFER);
-		glReadBuffer(attach_from);
+		src.bindRead(attach_from);
 
-		gl_framebuffer_check(GL_READ_FRAMEBUFFER);
-		gl_framebuffer_check(GL_DRAW_FRAMEBUFFER);
+		//gl_framebuffer_check(GL_READ_FRAMEBUFFER);
+		//gl_framebuffer_check(GL_DRAW_FRAMEBUFFER);
 
 		//std::cout << "blit : " << src.w() << " " << src.h() << " " << w() << " " << h() << std::endl;
 
@@ -296,16 +291,17 @@ namespace gloops {
 			0, 0, w(), h(), mask, filter);
 
 		gl_check();
-		gl_framebuffer_check(GL_READ_FRAMEBUFFER);
-		gl_framebuffer_check(GL_DRAW_FRAMEBUFFER);
+		//gl_framebuffer_check(GL_READ_FRAMEBUFFER);
+		//gl_framebuffer_check(GL_DRAW_FRAMEBUFFER);
 	}
 
-	void Framebuffer::blitFrom(const Texture& tex, GLenum filter, int attach_to)
+	void Framebuffer::blitFrom(const Texture& tex, GLenum filter, GLenum attach_to)
 	{
 		Framebuffer src = Framebuffer::empty(tex.w(), tex.h());
 		src.bind(GL_READ_FRAMEBUFFER);
 		glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, tex.getParams().target, tex.getId(), 0);
-		gl_framebuffer_check(GL_READ_FRAMEBUFFER);
+		
+		//gl_framebuffer_check(GL_READ_FRAMEBUFFER);
 
 		blitFrom(src, GL_COLOR_ATTACHMENT0, attach_to, filter, GL_COLOR_BUFFER_BIT);
 	}
@@ -420,7 +416,7 @@ namespace gloops {
 
 	void TextureManager::load_from_disk()
 	{
-		img_ptr.reset(new Image3u());
+		img_ptr.reset(new Image3b());
 		img_ptr->load(path);
 		img_loaded = true;
 
@@ -446,7 +442,7 @@ namespace gloops {
 		return tex_ptr;
 	}
 
-	std::shared_ptr<Image3u> TextureManager::getImage()
+	std::shared_ptr<Image3b> TextureManager::getImage()
 	{
 		if (img_loaded) {
 			return img_ptr;

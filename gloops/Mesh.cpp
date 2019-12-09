@@ -386,6 +386,7 @@ namespace gloops {
 		precision = std::max(precision, 2u);
 
 		Vertices vertices(static_cast<size_t>(precision) * precision);
+		Normals normals(vertices.size());
 		Triangles triangles(2u * static_cast<size_t>(precision - 1) * precision);
 
 		double frac_p = 1 / (double)precision;
@@ -396,7 +397,9 @@ namespace gloops {
 			for (size_t p = 0; p < precision; ++p) {
 				double phi = p * frac_p * 2 * pi();
 				double cosp = std::cos(phi), sinp = std::sin(phi);
-				vertices[p + precision * t] = (radius * v3d(sint * cosp, sint * sinp, cost).template cast<float>() + center);
+				normals[p + precision * t] = v3d(sint * cosp, sint * sinp, cost).template cast<float>();
+				vertices[p + precision * t] = (radius * normals[p + precision * t] + center);
+				
 			}
 		}
 
@@ -416,7 +419,44 @@ namespace gloops {
 		MeshGL mesh;
 		mesh.setVertices(vertices);
 		mesh.setTriangles(triangles);
+		mesh.setNormals(normals);
 		return mesh;
+	}
+
+	MeshGL MeshGL::getCube(const Box& box)
+	{
+		static const Mesh::Triangles tris = {
+			{ 0, 3, 1 }, { 0, 2, 3 }, 
+			{ 4, 5, 7 }, {7, 6, 4 },
+			{ 8, 11, 9 }, { 11, 8, 10 },
+			{ 12, 13, 15 }, { 12, 15, 14 },
+			{ 16, 19, 17 }, { 19, 16, 18 },
+			{ 20, 21, 23 }, { 20, 23, 22 }
+		};
+
+		static const std::vector<std::vector<int>> corners = {
+			//top bottom left right floor ceil
+			{ 2, 3, 6, 7 },
+			{ 0, 1, 4, 5 },
+			{ 0, 2, 4, 6 },
+			{ 1, 3, 5, 7 },
+			{ 0, 1, 2, 3 },
+			{ 4, 5, 6, 7 }
+		};
+
+		Mesh::Vertices vertices(4 * 6);
+		for (int f = 0; f < 6; ++f) {
+			for (int v = 0; v < 4; ++v) {
+				vertices[4 * f + v] = box.corner((Box::CornerType)corners[f][v]);
+			}
+		}
+		
+		MeshGL out;
+		out.setTriangles(tris);
+		out.setVertices(vertices);
+		out.computeVertexNormalsFromVertices();
+
+		return out;
 	}
 
 	MeshGL MeshGL::getCubeLines(const Box& box)

@@ -30,16 +30,16 @@ namespace gloops {
 		glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
 
 		//window = glfwCreateWindow(mode->width, mode->height, name.c_str(), glfwGetPrimaryMonitor(), NULL);
-		window = glfwCreateWindow(1600, 1000, name.c_str(), NULL, NULL);
+		window = std::shared_ptr<GLFWwindow>(glfwCreateWindow(1600, 1000, name.c_str(), NULL, NULL), glfwDestroyWindow);
 
 		if (!window){
 			std::cout << " Window or OpenGL context creation failed " << std::endl;	
 		} 
 		
-		glfwGetFramebufferSize(window, &size[0], &size[1]);
+		glfwGetFramebufferSize(window.get(), &size[0], &size[1]);
 		_viewport = Viewport(v2d(0, 0), size. template cast<double>());
 
-		glfwMakeContextCurrent(window);
+		glfwMakeContextCurrent(window.get());
 		int desired_fps = 60;
 		int interval = mode->refreshRate / desired_fps;
 		std::cout << "screen refresh rate : " << mode->refreshRate << "fps" << std::endl;
@@ -76,13 +76,17 @@ namespace gloops {
 		//ImGui::StyleColorsClassic();
 
 		//imgui scaling
-		float scaling = static_cast<float>(std::max(winSize()[0] / 1920.0, winSize()[1] / 1080.0));
+		float xscale, yscale;
+		glfwGetMonitorContentScale(glfwGetPrimaryMonitor(), &xscale, &yscale);
+		
+		//float scaling = static_cast<float>(std::max(winSize()[0] / 1920.0, winSize()[1] / 1080.0));
+		float scaling = std::max(xscale, yscale);
 		ImGui::GetStyle().ScaleAllSizes(scaling);
 		ImGui::GetIO().FontGlobalScale = scaling;
 
 		// Setup Platform/Renderer bindings
-		ImGui_ImplGlfw_InitForOpenGL(window, false);
-		ImGui_ImplOpenGL3_Init("#version 150");
+		ImGui_ImplGlfw_InitForOpenGL(window.get(), false);
+		ImGui_ImplOpenGL3_Init("#version 420");
 		//ImGui_ImplGlfw_CharCallback(window, )
 		//ImGui_ImplOpenGL3_Init("#version 420");
 
@@ -98,8 +102,6 @@ namespace gloops {
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();
-
-		glfwDestroyWindow(window);
 		glfwTerminate();
 	}
 
@@ -124,7 +126,7 @@ namespace gloops {
 		glfwPollEvents();
 
 		if (keyReleased(GLFW_KEY_ESCAPE)) {
-			glfwSetWindowShouldClose(window, GLFW_TRUE);
+			glfwSetWindowShouldClose(window.get(), GLFW_TRUE);
 		}
 
 	}
@@ -148,8 +150,7 @@ namespace gloops {
 
 		gl_check();
 
-		glfwSwapBuffers(window);
-
+		glfwSwapBuffers(window.get());
 
 		gl_check();
 
@@ -157,18 +158,17 @@ namespace gloops {
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-
 		gl_check();
 	}
 
 	int Window::shouldClose() const
 	{
-		return glfwWindowShouldClose(window);
+		return glfwWindowShouldClose(window.get());
 	}
 
 	void Window::close()
 	{
-		glfwSetWindowShouldClose(window, GLFW_TRUE);
+		glfwSetWindowShouldClose(window.get(), GLFW_TRUE);
 	}
 
 	void Window::clear()
@@ -207,22 +207,29 @@ namespace gloops {
 
 	void Window::renderingLoop(const std::function<void()>& renderingFunc)
 	{
-		while (!shouldClose()) {
-			clear();
-			pollEvents();
+		bool pause = false, pauseNext = false;
 
-			static bool pause = false;
+		while (!shouldClose()) {
+			
+			pause = pauseNext;
+
+			if (!pause) {
+				clear();
+			}
+			
+			pollEvents();
+			
 			if (ImGui::BeginMainMenuBar()) {
 				if (ImGui::BeginMenu("options")) {
-					ImGui::MenuItem("pause", 0, &pause, true);
+					ImGui::MenuItem("pause", 0, &pauseNext, true);
 				}
 			}
 
 			if (!pause) {
 				renderingFunc();
-			}
-			
-			swapBuffers();
+			} 
+
+			swapBuffers();	
 		}
 	}
 
@@ -270,7 +277,12 @@ namespace gloops {
 		}
 
 		size = { w,h };
-		float scaling = std::max(winSize()[0] / 1920.0f, winSize()[1] / 1080.0f);
+
+		float xscale, yscale;
+		glfwGetMonitorContentScale(glfwGetPrimaryMonitor(), &xscale, &yscale);
+		float scaling = std::max(xscale, yscale);
+
+		//float scaling = std::max(winSize()[0] / 1920.0f, winSize()[1] / 1080.0f);
 		ImGui::GetStyle() = ImGuiStyle();
 		ImGui::GetStyle().ScaleAllSizes(scaling);
 		ImGui::GetIO().FontGlobalScale = scaling;
@@ -298,22 +310,23 @@ namespace gloops {
 				if (ImGui::BeginMenu(gui_text("settings").c_str())) {
 					ImGui::MenuItem(gui_text("gui").c_str(), NULL, &showGui);
 					ImGui::MenuItem(gui_text("debug").c_str(), NULL, &showDebug);
+					ImGui::MenuItem(gui_text("input").c_str(), NULL, &showInput);
 
 					if (ImGui::BeginMenu(gui_text("rendering res").c_str())) {
-						gui_render_size = v2i(framebuffer.w(), framebuffer.h());
+						gui_render_size = v2f(framebuffer.w(), framebuffer.h());
 
 						bool changed = false;
-						if (ImGui::SliderInt(gui_text("W").c_str(), &gui_render_size[0], 1, (int)viewport().width())) {
-							gui_render_size[1] = (int)std::ceil(framebuffer.h() * gui_render_size[0] / (float)framebuffer.w());
+						if (ImGui::SliderFloat(gui_text("W").c_str(), &gui_render_size[0], 1, (float)viewport().width())) {
+							gui_render_size[1] = framebuffer.h() * gui_render_size[0] / (float)framebuffer.w();
 							changed = true;
 						}
-						if (ImGui::SliderInt(gui_text("H").c_str(), &gui_render_size[1], 1, (int)viewport().height())) {
-							gui_render_size[0] = (int)std::ceil(framebuffer.w() * gui_render_size[1] / (float)framebuffer.h());
+						if (ImGui::SliderFloat(gui_text("H").c_str(), &gui_render_size[1], 1, (float)viewport().height())) {
+							gui_render_size[0] = framebuffer.w() * gui_render_size[1] / (float)framebuffer.h();
 							changed = true;
 						}
 
 						if (changed) {
-							framebuffer.resize(gui_render_size[0], gui_render_size[1]);
+							framebuffer.resize((int)std::ceil(gui_render_size[0]), (int)std::ceil(gui_render_size[1]));
 						}
 
 						ImGui::EndMenu();
@@ -339,8 +352,7 @@ namespace gloops {
 			v2f availableSize(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y);
 
 			v2f offset, size, screenBottomRight;
-			fitContent(offset, size, viewport().diagonal().template cast<float>(), availableSize);
-			size.cwiseMax(v2f(1, 1));
+			fitContent(offset, size, viewport().diagonal().cwiseMax(v2d(1,1)).template cast<float>(), availableSize);
 
 			screenTopLeft += offset;
 			screenBottomRight = screenTopLeft + size;
@@ -395,7 +407,7 @@ namespace gloops {
 
 			ImGui::InvisibleButton((win_name + "_dummy").c_str(), { size[0], size[1] });
 			ImGui::GetWindowDrawList()->AddImage(
-				framebuffer.getAttachmentId(),
+				framebuffer.getAttachment().getId(),
 				{ screenTopLeft[0], screenBottomRight[1] },
 				{ screenBottomRight[0], screenTopLeft[1] });
 		}

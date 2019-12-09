@@ -4,12 +4,12 @@
 
 #include <array>
 #include <memory>
+#include <utility>
 #include <embree3/rtcore.h>
 
 namespace gloops {
 
 	class Mesh;
-
 
 	template<uint size>
 	struct RayPack;
@@ -37,6 +37,16 @@ namespace gloops {
 			return rtcIntersect16;
 		}
 	};
+
+	template<size_t... Is>
+	constexpr std::array<int32_t, sizeof...(Is)> allValidRaysImpl(std::index_sequence<Is...>) {
+		return {(Is, -1)...};
+	}
+
+	template<int N>
+	constexpr std::array<int32_t, N> allValidRays() {
+		return allValidRaysImpl(std::make_index_sequence<N>{});
+	}
 
 	class Hit {
 
@@ -77,11 +87,16 @@ namespace gloops {
 		Hit intersect(const Ray& ray, float near = 0.0f, float far = std::numeric_limits<float>::infinity()) const;
 
 		template<uint N>
-		std::array<Hit, N> intersectPack(const std::array<Ray, N>& rays, const std::array<int32_t, N>& valids,
-				float near = 0.0f, float far = std::numeric_limits<float>::infinity()) const;
+		std::array<Hit, N> intersectPack(
+			const std::array<Ray, N>& rays,
+			const std::array<int32_t, N>& valids = allValidRays<N>(),
+			float near = 0.0f, 
+			float far = std::numeric_limits<float>::infinity()
+		) const;
 
-		void addMesh(const Mesh& mesh);
-
+		template<typename ...Meshes, typename Mesh> 
+		void addMesh(const Mesh& mesh, const Meshes& ...meshes);
+	
 	private:
 		static void initRayHit(RTCRayHit& out, const Ray& ray, float near, float far);
 
@@ -95,6 +110,9 @@ namespace gloops {
 		void checkDevice() const;
 
 		void checkScene() const;
+
+		void addMeshInternal(const Mesh& mesh);
+		void addMesh(){}
 
 		ScenePtr scene;
 		ContextPtr context;
@@ -153,4 +171,10 @@ namespace gloops {
 		return Hit::fromPack<N>(rayHits);
 	}
 
+	template<typename ...Meshes, typename Mesh>
+	inline void Raycaster::addMesh(const Mesh& mesh, const Meshes& ...meshes)
+	{
+		addMeshInternal(mesh);
+		addMesh(meshes...);
+	}
 }

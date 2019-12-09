@@ -16,11 +16,57 @@
 
 #define SHADER_STR(version, shader)  std::string("#version " #version "\n" #shader)
 
-namespace gloops {
+namespace gloops_types {
 
 	using Time = long long int;
 	using uint = unsigned int;
 	using uchar = unsigned char;
+
+
+	using v3b = Eigen::Matrix<uchar, 3, 1>;
+
+	using v2i = Eigen::Vector2i;
+	using v3i = Eigen::Vector3i;
+	using v4i = Eigen::Vector4i;
+
+	using v3u = Eigen::Matrix<uint32_t, 3, 1>;
+
+	using v2f = Eigen::Vector2f;
+	using v3f = Eigen::Vector3f;
+	using v4f = Eigen::Vector4f;
+
+	using v3d = Eigen::Vector3d;
+	using v2d = Eigen::Vector2d;
+
+	using m3f = Eigen::Matrix3f;
+	using m4f = Eigen::Matrix4f;
+
+	using m3d = Eigen::Matrix3d;
+	using m4d = Eigen::Matrix4d;
+
+	using Diag4f = Eigen::DiagonalMatrix<float, 4>;
+
+	using Qf = Eigen::Quaternion<float>;
+	using Qd = Eigen::Quaternion<double>;
+
+	using Plane3f = Eigen::Hyperplane<float, 3>;
+	using Line3f = Eigen::ParametrizedLine<float, 3>;
+
+	using Rf = Eigen::AngleAxis<float>;
+	using Rd = Eigen::AngleAxis<double>;
+
+	using BBox3f = Eigen::AlignedBox<float, 3>;
+	using BBox2f = Eigen::AlignedBox<float, 2>;
+
+	using BBox2d = Eigen::AlignedBox<double, 2>;
+
+	template<typename T>
+	using Ray = Eigen::ParametrizedLine<T, 3>;
+}
+
+namespace gloops {
+
+	using namespace gloops_types;
 
 	template<typename FunType>
 	void renderGroup(const std::string& s, FunType&& f) {
@@ -76,43 +122,6 @@ namespace gloops {
 		std::shared_ptr<GLuints> _ids;
 	};
 
-	using v2i = Eigen::Vector2i;
-	using v3i = Eigen::Vector3i;
-	using v4i = Eigen::Vector4i;
-
-	using v3u = Eigen::Matrix<uint32_t, 3, 1>;
-
-	using v2f = Eigen::Vector2f;
-	using v3f = Eigen::Vector3f;
-	using v4f = Eigen::Vector4f;
-
-	using v3d = Eigen::Vector3d;
-	using v2d = Eigen::Vector2d;
-
-	using m3f = Eigen::Matrix3f;
-	using m4f = Eigen::Matrix4f;
-
-	using m3d = Eigen::Matrix3d;
-	using m4d = Eigen::Matrix4d;
-
-	using Diag4f = Eigen::DiagonalMatrix<float, 4>;
-
-	using Qf = Eigen::Quaternion<float>;
-	using Qd = Eigen::Quaternion<double>;
-
-	using Plane3f = Eigen::Hyperplane<float, 3>;
-	using Line3f = Eigen::ParametrizedLine<float, 3>;
-
-	using Rf = Eigen::AngleAxis<float>;
-	using Rd = Eigen::AngleAxis<double>;
-
-	using BBox3f = Eigen::AlignedBox<float, 3>;
-	using BBox2f = Eigen::AlignedBox<float, 2>;
-
-	using BBox2d = Eigen::AlignedBox<double, 2>;
-
-	template<typename T>
-	using Ray = Eigen::ParametrizedLine<T, 3>;
 
 	inline std::string loadFile(const std::string& path) {
 		std::ifstream ifs(path);
