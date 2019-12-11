@@ -61,7 +61,7 @@ namespace gloops {
 			std::stringstream ss;
 			ss << "vp : " << viewport().min().transpose() << " " << viewport().max().transpose() << "\n";
 			ss << "mouse pos " << mousePosition().transpose();
-			ImGui::Text(ss.str().c_str());
+			ImGui::Text(ss.str());
 		}
 		if (ImGui::CollapsingHeader("mousek")) {
 			std::stringstream ss;
@@ -69,14 +69,14 @@ namespace gloops {
 			for (uint i = 0; i < mouseStatus.size(); ++i ) {
 				ss << std::fixed << i << " : " << mouseStatus[i] << "\n";
 			}
-			ImGui::Text(ss.str().c_str());
+			ImGui::Text(ss.str());
 		}
 		if (ImGui::CollapsingHeader("key")) {
 			std::stringstream ss;
 			for (uint i = 0; i < keyStatus.size(); ++i) {
 				ss << std::fixed << i << " : " << keyStatus[i] << "\n";
 			}
-			ImGui::Text(ss.str().c_str());
+			ImGui::Text(ss.str());
 		}
 	}
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Config.hpp"
+#include "config.hpp"
 
 #include <string>
 #include <list>
@@ -35,12 +35,12 @@ namespace gloops {
 
 		const Pixel& pixel(int x, int y) const
 		{
-			return _data[static_cast<size_t>(y)* w() + x];
+			return _pixels[static_cast<size_t>(y)* w() + x];
 		}
 
 		Pixel& pixel(int x, int y)
 		{
-			return _data[static_cast<size_t>(y)* w() + x];
+			return _pixels[static_cast<size_t>(y)* w() + x];
 		}
 
 		v4f pixel4f(int x, int y) const {
@@ -64,7 +64,7 @@ namespace gloops {
 
 		void load(const std::string & path)
 		{
-			static_assert(N == 3 && std::is_same_v<T, uchar>, "sbti image loads only uchar3");
+			static_assert(std::is_same_v<T, uchar>, "GLoops only support uchar sbti image loads");
 
 			int  w, h, n;
 			uchar * data_ptr = stbi_load(path.c_str(), &w, &h, &n, 0);
@@ -78,9 +78,9 @@ namespace gloops {
 			if (data_ptr) {
 				_path = path;
 				allocate(w, h);
-				std::memcpy(_data.data(), data_ptr, _data.size() * sizeof(T));
+				std::memcpy(_pixels.data(), data_ptr, _pixels.size() * sizeof(T));
 				stbi_image_free(data_ptr);
-				std::cout << _w << " x " << _h << " x " << N << std::endl;
+				std::cout << path << " : " << _w << " x " << _h << " x " << N << std::endl;
 			} else {
 				std::cout << " cant load " << path << std::endl;
 			}
@@ -88,12 +88,12 @@ namespace gloops {
 
 		const uchar *data() const
 		{
-			return reinterpret_cast<const uchar*>(_data.data());
+			return reinterpret_cast<const uchar*>(_pixels.data());
 		}
 
 		uchar* data() 
 		{
-			return reinterpret_cast<uchar*>(_data.data());
+			return reinterpret_cast<uchar*>(_pixels.data());
 		}
 
 		const std::string& getPath() const
@@ -105,7 +105,7 @@ namespace gloops {
 			if (w == _w && h == _h) {
 				return;
 			}
-			_data.resize(w * static_cast<size_t>(h) * N);
+			_pixels.resize(w * static_cast<size_t>(h) * N);
 			_w = w;
 			_h = h;
 		}
@@ -114,7 +114,7 @@ namespace gloops {
 	private:
 
 		std::string _path;
-		std::vector<Pixel> _data;
+		std::vector<Pixel> _pixels;
 		int _w = 0, _h = 0;
 	};
 
@@ -320,7 +320,7 @@ namespace gloops {
 		void bindDraw(GLenum attachment) const;
 		void bindRead(GLenum attachment) const;
 
-		void clear(GLbitfield mask = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT), const v4f & color = { 0,0,0,0 } );
+		void clear(const v4f& color = { 0,0,0,0 }, GLbitfield mask = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
 		GLuint getId() const;
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Config.hpp"
+#include "config.hpp"
 
 namespace gloops {
 	

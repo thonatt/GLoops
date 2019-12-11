@@ -64,6 +64,14 @@ namespace gloops_types {
 	using Ray = Eigen::ParametrizedLine<T, 3>;
 }
 
+namespace ImGui {
+
+	inline void Text(const std::string& s) {
+		ImGui::Text("%s", s.c_str());
+	}
+
+}
+
 namespace gloops {
 
 	using namespace gloops_types;
@@ -131,7 +139,7 @@ namespace gloops {
 	}
 
 	inline void v3fgui(const v3f& v) {
-		ImGui::Text((std::to_string(v[0]) + " " + std::to_string(v[1]) + " " + std::to_string(v[2])).c_str());
+		ImGui::Text(std::to_string(v[0]) + " " + std::to_string(v[1]) + " " + std::to_string(v[2]));
 	}
 
 	template<typename U = double>
@@ -182,14 +190,14 @@ namespace gloops {
 	template<typename T>
 	Eigen::Matrix<T, 4, 4> rotation(const Eigen::Matrix<T, 3, 3>& rot) {
 		Eigen::Matrix<T, 4, 4> out = Eigen::Matrix<T, 4, 4> ::Identity();
-		out.block<3, 3>(0, 0) = rot;
+		out.template block<3, 3>(0, 0) = rot;
 		return out;
 	}
 
 	template<typename T>
 	Eigen::Matrix<T, 4, 4> translation(const Eigen::Matrix<T, 3, 1>& position) {
 		Eigen::Matrix<T, 4, 4> out = Eigen::Matrix<T, 4, 4> ::Identity();
-		out.block<3, 1>(0, 3) = position;
+		out.template block<3, 1>(0, 3) = position;
 		return out;
 	}
 

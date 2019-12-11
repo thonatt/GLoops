@@ -40,7 +40,7 @@ gloops::SubWindow checker_subwin()
 		if (doReadback) {
 			s << "current color : " << (currentCol ? "black" : "white");
 		}
-		ImGui::Text(s.str().c_str());
+		ImGui::Text(s.str());
 	},
 		[&](const gloops::Input& i) 
 	{
@@ -78,11 +78,19 @@ gloops::SubWindow mesh_viewer_subwin()
 	static gloops::ShaderCollection shaders;
 
 	static v4f color = { 1.0f, 0.0f, 1.0f, 0.5f };
+	static v4f background_color = { 0.9f, 0.9f, 0.9f, 1.0f };
 
 	return gloops::SubWindow("mesh viewer", v2i(800, 600),
 		[&]
 	{
-		ImGui::ColorEdit4("mesh color", &color[0], ImGuiColorEditFlags_NoInputs);
+		auto colPicker = [&](const std::string& s, float* ptr, uint flag = 0) {
+			ImGui::Text(s);
+			ImGui::SameLine();
+			ImGui::ColorEdit4(s.c_str(), ptr, flag | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+		};
+
+		colPicker("sphere color : ", &color[0]);
+		colPicker("background color", &background_color[0], ImGuiColorEditFlags_NoAlpha);
 	},
 		[&](const gloops::Input& i)
 	{
@@ -90,6 +98,7 @@ gloops::SubWindow mesh_viewer_subwin()
 	},
 		[&](gloops::Framebuffer& dst) 
 	{
+		dst.clear(background_color);
 		dst.bindDraw();
 
 		gloops::Cameraf eye = tb.getCamera();
@@ -122,14 +131,19 @@ int main(int argc, char** argv)
 	auto win_checkers = checker_subwin();
 	auto win_mesh = mesh_viewer_subwin();
 
-	bool showCheckers = false, showMesh = false;
+	bool showImGuiDemo = false, showCheckers = false, showMesh = false;
 
 	win.renderingLoop([&]{
 		if (ImGui::Begin("demo settings")) {
+			ImGui::Checkbox("ImGui demo", &showImGuiDemo);
 			ImGui::Checkbox("checkers texture", &showCheckers);
 			ImGui::Checkbox("mesh viewer", &showMesh);
 		}
 		ImGui::End();
+
+		if (showImGuiDemo) {
+			win.showImguiDemo();
+		}
 
 		if (showCheckers) {
 			win_checkers.show(win);

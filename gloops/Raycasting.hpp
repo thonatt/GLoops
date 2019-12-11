@@ -40,7 +40,7 @@ namespace gloops {
 
 	template<size_t... Is>
 	constexpr std::array<int32_t, sizeof...(Is)> allValidRaysImpl(std::index_sequence<Is...>) {
-		return {(Is, -1)...};
+		return {((void)Is, -1)...};
 	}
 
 	template<int N>

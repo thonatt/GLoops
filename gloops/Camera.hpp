@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Config.hpp"
+#include "config.hpp"
 #include "Input.hpp"
 #include "Mesh.hpp"
 #include "Raycasting.hpp"
@@ -202,6 +202,25 @@ namespace gloops {
 			dirty = true;
 		}
 
+		Camera interpolate(const Camera& other, T t) const
+		{
+			auto lerp = [](const auto& a1, const auto& a2, auto u) {
+				return a1 + u * (a2 - a1);
+			};
+
+			Camera out;
+			out.setPerspective(
+				lerp(fovy(), other.fovy(), t),
+				lerp(aspect(), other.aspect(), t),
+				lerp(zNear(), other.zNear(), t),
+				lerp(zFar(), other.zFar(), t)
+			);
+			out.setRotation(getRotation().slerp(t, other.getRotation()));
+			out.setPosition(lerp(position(), other.position(), t));
+			
+			return out;
+		}
+
 		template<typename U> Camera<U> cast() const
 		{
 			Camera<U> out;
@@ -267,9 +286,9 @@ namespace gloops {
 	class RaycastingCamera : public Camera<T> {
 		using Cam = Camera<T>;
 		using Ray = Ray<T>;
-		using v2 = Cam::v2;
-		using v3 = Cam::v3;
-		using Quat = Cam::Quat;
+		using v2 = typename Cam::v2;
+		using v3 = typename Cam::v3;
+		using Quat = typename Cam::Quat;
 
 
 	public:
@@ -326,7 +345,7 @@ namespace gloops {
 		}
 
 		Ray getRay(const v2& pix) const {
-			return Ray(position(), rayDir(pix));
+			return Ray(Camera<T>::position(), rayDir(pix));
 		}
 
 		int w() const {
@@ -408,14 +427,14 @@ namespace gloops {
 		}
 
 		void setupDerivatives() {
-			T h_world = static_cast<T>(2)* std::tan(fovy() / static_cast<T>(2));
-			T w_world = h_world * aspect();
+			T h_world = static_cast<T>(2)* std::tan(Camera<T>::fovy() / static_cast<T>(2));
+			T w_world = h_world * Camera<T>::aspect();
 
-			v3 col = w_world * right();
-			v3 row = -h_world * up();
+			v3 col = w_world * Camera<T>::right();
+			v3 row = -h_world * Camera<T>::up();
 			dx = col / static_cast<T>(w());
 			dy = row / static_cast<T>(h());
-			offset = dir() - (col + row) / T(2);
+			offset = Camera<T>::dir() - (col + row) / T(2);
 		}
 
 		v3 dx, dy, offset;

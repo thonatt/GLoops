@@ -242,7 +242,7 @@ namespace gloops {
 		glReadBuffer(attachment);
 	}
 
-	void Framebuffer::clear(GLbitfield mask, const v4f & c)
+	void Framebuffer::clear(const v4f& c, GLbitfield mask)
 	{
 		bind();
 		glClearColor(c[0], c[1], c[2], c[3]);
@@ -420,7 +420,7 @@ namespace gloops {
 		img_ptr->load(path);
 		img_loaded = true;
 
-		std::cout << path << " loaded" << std::endl;
+		//std::cout << path << " loaded" << std::endl;
 	}
 
 	void TextureManager::update_to_gpu()

@@ -31,7 +31,7 @@ namespace gloops {
 	}
 
 	ShaderData::ShaderData(GLuint shader_type, const std::string & shader_str)
-		: type(shader_type), str(shader_str)
+		: str(shader_str), type(shader_type)
 	{
 		if (str != "") {
 			gl_check();

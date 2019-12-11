@@ -12,5 +12,5 @@ add_executable(GLoops_example ${AppFiles})
 set(GLOOP_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../")
 message("GLOOP_PATH" ${GLOOP_PATH})
 
-FIND_PATH(GLOOPS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../" CMakeLists.txt)
+FIND_PATH(GLOOPS_DIR CMakeLists.txt "${CMAKE_CURRENT_SOURCE_DIR}/../")
 include("${GLOOPS_DIR}/CMakeLists.txt")

@@ -134,6 +134,7 @@ namespace gloops {
 	void Window::swapBuffers()
 	{
 		Framebuffer::bindDefault();
+		glClearColor(0, 0, 0, 0);
 
 		gl_check();
 		ImGui::Render();
@@ -290,7 +291,7 @@ namespace gloops {
 
 	SubWindow::SubWindow(const std::string& name, const v2i& renderingSize,
 		GuiFunc guiFunction, UpdateFunc upFunc, RenderingFunc renderFunc)
-		: win_name(name), guiFunc(guiFunction), updateFunc(upFunc), renderingFunc(renderFunc)
+		: guiFunc(guiFunction), updateFunc(upFunc), renderingFunc(renderFunc), win_name(name)
 	{
 		TexParams params = TexParams::RGBA;
 		params.setMipmapStatus(false).setWrapS(GL_CLAMP_TO_EDGE).setWrapT(GL_CLAMP_TO_EDGE);
@@ -386,7 +387,7 @@ namespace gloops {
 			}
 			
 			float bg = 0.0f;
-			framebuffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, v4f(bg, bg, bg, 1.0));
+			framebuffer.clear(v4f(bg, bg, bg, 1.0), (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
 			if (renderingFunc) {
 				renderingFunc(framebuffer);
@@ -398,7 +399,7 @@ namespace gloops {
 					s << " size : " << size[0] << " " << size[1] << std::endl;
 					s << " viewport : " << screenBottomRight[0] - screenTopLeft[0] << " " << screenBottomRight[1] - screenTopLeft[1] << std::endl;
 					s << " offset : " << offset[0] << " " << offset[1] << std::endl;
-					ImGui::Text(s.str().c_str());
+					ImGui::Text(s.str());
 				}
 				ImGui::End();
 			}

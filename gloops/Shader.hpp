@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Config.hpp"
+#include "config.hpp"
 
 #include <vector>
 #include <memory>
@@ -44,6 +44,8 @@ namespace gloops {
 
 		void send() const override;
 
+		virtual ~GLuniformInternal() = default;
+
 	protected:
 		T t;
 	};
@@ -54,7 +56,6 @@ namespace gloops {
 	template<> inline void GLuniformInternal<int>::send() const {
 		glUniform1i(location, t);
 	}
-
 	template<> inline void GLuniformInternal<float>::send() const {
 		glUniform1f(location, t);
 	}
@@ -70,13 +71,11 @@ namespace gloops {
 	template<> inline void GLuniformInternal<m3f>::send() const {
 		glUniformMatrix3fv(location, 1, GL_FALSE, t.data());
 	}
-
 	template<> inline void GLuniformInternal<m4f>::send() const {
 		glUniformMatrix4fv(location, 1, GL_FALSE, t.data());
 	}
 
 	class ShaderProgram;
-
 
 	template<typename T>
 	class Uniform {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Config.hpp"
+#include "config.hpp"
 #include <vector>
 #include <map>
 #include <any>
@@ -24,15 +24,15 @@ namespace gloops {
 		const Triangles& getTriangles() const;
 		const Colors& getColors() const;
 
-		virtual void setTriangles(const Triangles& tris);
-		virtual void setVertices(const Vertices& tris);
-		virtual void setUVs(const UVs& tris);
-		virtual void setNormals(const Normals& tris);
-		virtual void setColors(const Colors& tris);
+		void setTriangles(const Triangles& tris);
+		void setVertices(const Vertices& tris);
+		void setUVs(const UVs& tris);
+		void setNormals(const Normals& tris);
+		void setColors(const Colors& tris);
 
 		virtual bool load(const std::string& path);
 
-		virtual void computeVertexNormalsFromVertices();
+		void computeVertexNormalsFromVertices();
 
 		const Box& getBoundingBox() const;
 
@@ -158,7 +158,8 @@ namespace gloops {
 		custom_attributes[location] = std::make_any<std::vector<T>>(data);
 
 		attributes_mapping[location] = VertexAttribute(
-			std::any_cast<const std::vector<T>&>(custom_attributes.at(location)), location);
+			std::any_cast<const std::vector<T>&>(custom_attributes.at(location)), location
+		);
 
 		if (numElements == 0) {
 			numElements = static_cast<GLsizei>(data.size());
