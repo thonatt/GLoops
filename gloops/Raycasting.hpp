@@ -87,7 +87,7 @@ namespace gloops {
 		Hit intersect(const Ray& ray, float near = 0.0f, float far = std::numeric_limits<float>::infinity()) const;
 
 		template<uint N>
-		std::array<Hit, N> intersectPack(
+		std::array<Hit, N> intersect(
 			const std::array<Ray, N>& rays,
 			const std::array<int32_t, N>& valids = allValidRays<N>(),
 			float near = 0.0f, 
@@ -158,7 +158,7 @@ namespace gloops {
 	}
 
 	template<uint N>
-	inline std::array<Hit, N> Raycaster::intersectPack(
+	inline std::array<Hit, N> Raycaster::intersect(
 		const std::array<Ray, N>& rays, const std::array<int32_t, N>& valids, float near, float far) const
 	{
 		checkScene();

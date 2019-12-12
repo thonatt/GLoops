@@ -138,6 +138,8 @@ namespace gloops {
 		bool backface_culling = true;
 		bool depth_test = true;
 
+		const std::map<GLuint, VertexAttribute>& getAttributes() const;
+
 	private:
 		size_t size_of_vertex_data() const;
 

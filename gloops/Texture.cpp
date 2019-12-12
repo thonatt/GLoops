@@ -295,7 +295,7 @@ namespace gloops {
 		//gl_framebuffer_check(GL_DRAW_FRAMEBUFFER);
 	}
 
-	void Framebuffer::blitFrom(const Texture& tex, GLenum filter, GLenum attach_to)
+	void Framebuffer::blitFrom(const Texture& tex, GLenum attach_to, GLenum filter)
 	{
 		Framebuffer src = Framebuffer::empty(tex.w(), tex.h());
 		src.bind(GL_READ_FRAMEBUFFER);

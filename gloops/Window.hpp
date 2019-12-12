@@ -74,6 +74,7 @@ namespace gloops {
 	class Window : public Input {
 
 	public:
+
 		Window(const std::string & name = "name");
 
 		~Window();	 
@@ -103,6 +104,9 @@ namespace gloops {
 		void mouseScrollCallback(GLFWwindow * win, double x, double y);
 		void mousePositionCallback(GLFWwindow * win, double x, double y);
 		void winResizeCallback(GLFWwindow * win, int w, int h);
+
+		static void glErrorCallBack(GLenum source, GLenum type, GLuint id, GLenum severity, 
+			GLsizei length, const GLchar* message, const void* userParam);
 
 		template<CallbackType type, typename F>
 		void setCallback(F && f) {

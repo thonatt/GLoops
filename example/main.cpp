@@ -4,6 +4,8 @@
 #include <gloops/Camera.hpp>
 #include <gloops/Shader.hpp>
 
+#include <map>
+
 using namespace gloops_types;
 
 gloops::Image3b getCheckersImage(int w, int h, int r)
@@ -80,6 +82,10 @@ gloops::SubWindow mesh_viewer_subwin()
 	static v4f color = { 1.0f, 0.0f, 1.0f, 0.5f };
 	static v4f background_color = { 0.9f, 0.9f, 0.9f, 1.0f };
 
+	static std::map<std::string, gloops::MeshGL> meshes;
+	meshes["cube"] = cube;
+	meshes["sphere"] = sphere;
+
 	return gloops::SubWindow("mesh viewer", v2i(800, 600),
 		[&]
 	{
@@ -91,6 +97,35 @@ gloops::SubWindow mesh_viewer_subwin()
 
 		colPicker("sphere color : ", &color[0]);
 		colPicker("background color", &background_color[0], ImGuiColorEditFlags_NoAlpha);
+
+		if (ImGui::CollapsingHeader("meshes data")) {
+			ImGui::Separator();
+			for (const auto& mesh : meshes) {
+				std::stringstream header;
+				header << mesh.first << "\n";
+
+				const auto& m = mesh.second;
+				header << "  num vertices : " << m.getVertices().size() << "\n";
+				header << "  num triangles : " << m.getTriangles().size() << "\n";
+				ImGui::Text(header.str());
+
+				if (ImGui::TreeNode(("vertex data attributes##" + mesh.first).c_str())) {
+					for (const auto& attribute : m.getAttributes()) {
+						std::stringstream s;
+						const auto& att = attribute.second;
+						s << "location : " << att.index << "\n";
+						s << "  nchannels : " << att.num_channels << "\n";
+						s << "  type : " << att.type << "\n";
+						s << "  stride : " << att.stride << "\n";
+						s << "  normalized : " << std::boolalpha << (bool)att.normalized << "\n";
+						s << "  data ptr : " << att.pointer << "\n";
+						ImGui::Text(s.str());
+					}
+					ImGui::TreePop();
+				}
+				ImGui::Separator();
+			}
+		}
 	},
 		[&](const gloops::Input& i)
 	{

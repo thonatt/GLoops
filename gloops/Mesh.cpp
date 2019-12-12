@@ -371,6 +371,11 @@ namespace gloops {
 		return triangles.size() > 0 && vertices.size() > 0;
 	}
 
+	const std::map<GLuint, VertexAttribute>& MeshGL::getAttributes() const
+	{
+		return attributes_mapping;
+	}
+
 	size_t MeshGL::size_of_vertex_data() const
 	{
 		size_t out = 0;
@@ -388,6 +393,7 @@ namespace gloops {
 		Vertices vertices(static_cast<size_t>(precision) * precision);
 		Normals normals(vertices.size());
 		Triangles triangles(2u * static_cast<size_t>(precision - 1) * precision);
+		UVs uvs(vertices.size());
 
 		double frac_p = 1 / (double)precision;
 		double frac_t = 1 / ((double)precision - 1.0);
@@ -399,7 +405,7 @@ namespace gloops {
 				double cosp = std::cos(phi), sinp = std::sin(phi);
 				normals[p + precision * t] = v3d(sint * cosp, sint * sinp, cost).template cast<float>();
 				vertices[p + precision * t] = (radius * normals[p + precision * t] + center);
-				
+				uvs[p + precision * t] = v2f(frac_p, frac_t);
 			}
 		}
 
@@ -420,6 +426,7 @@ namespace gloops {
 		mesh.setVertices(vertices);
 		mesh.setTriangles(triangles);
 		mesh.setNormals(normals);
+		mesh.setUVs(uvs);
 		return mesh;
 	}
 

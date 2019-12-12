@@ -70,6 +70,9 @@ namespace ImGui {
 		ImGui::Text("%s", s.c_str());
 	}
 
+	inline void TextColored(const std::string& s, const gloops_types::v4f& c) {
+		ImGui::TextColored({ c[0],c[1],c[2],c[3] }, "%s", s.c_str());
+	}
 }
 
 namespace gloops {

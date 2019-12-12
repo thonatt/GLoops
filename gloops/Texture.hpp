@@ -340,8 +340,8 @@ namespace gloops {
 
 		void blitFrom(
 			const Texture& tex, 
-			GLenum filter = GL_NEAREST,
-			GLenum attach_to = GL_COLOR_ATTACHMENT0
+			GLenum attach_to = GL_COLOR_ATTACHMENT0,
+			GLenum filter = GL_NEAREST
 		);
 
 		template<typename T, int N>

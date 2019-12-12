@@ -11,10 +11,10 @@ namespace gloops {
 	public:
 		using BBox2d::BBox2d;
 
-		//returns uv in [-1,1] if inside viewport
-		v2d normalizedUV(const v2d & pos) const;
+		////returns uv in [-1,1] if inside viewport
+		//v2d normalizedUV(const v2d & pos) const;
 
-		//returns uv in [0,1] if inside viewport
+		//returns uv, in [0,1] when inside viewport
 		v2d uv(const v2d & pos) const;
 
 		double width() const;

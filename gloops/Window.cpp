@@ -15,7 +15,7 @@ namespace gloops {
 		}
 
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);	
 		//glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
@@ -64,6 +64,9 @@ namespace gloops {
 		}
 
 		gl_check();
+
+		glEnable(GL_DEBUG_OUTPUT);
+		glDebugMessageCallback(glErrorCallBack, 0);
 
 		// Setup Dear ImGui context
 		IMGUI_CHECKVERSION();
@@ -289,6 +292,88 @@ namespace gloops {
 		ImGui::GetIO().FontGlobalScale = scaling;
 	}
 
+	void Window::glErrorCallBack(GLenum source, GLenum type, GLuint id, GLenum severity,
+		GLsizei length, const GLchar* message, const void* userParam)
+	{
+
+#define GLOOPS_ENUM_STR(name) { name, #name }
+
+		static const std::map<GLenum, std::string> errors = {
+			GLOOPS_ENUM_STR(GL_INVALID_ENUM),
+			GLOOPS_ENUM_STR(GL_INVALID_VALUE),
+			GLOOPS_ENUM_STR(GL_INVALID_OPERATION),
+			GLOOPS_ENUM_STR(GL_STACK_OVERFLOW),
+			GLOOPS_ENUM_STR(GL_STACK_UNDERFLOW),
+			GLOOPS_ENUM_STR(GL_OUT_OF_MEMORY),
+			GLOOPS_ENUM_STR(GL_INVALID_FRAMEBUFFER_OPERATION),
+			GLOOPS_ENUM_STR(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB),
+			GLOOPS_ENUM_STR(GL_MAX_DEBUG_MESSAGE_LENGTH_ARB),
+			GLOOPS_ENUM_STR(GL_MAX_DEBUG_LOGGED_MESSAGES_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_LOGGED_MESSAGES_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_NEXT_LOGGED_MESSAGE_LENGTH_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_CALLBACK_FUNCTION_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_CALLBACK_USER_PARAM_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_API_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_WINDOW_SYSTEM_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_SHADER_COMPILER_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_THIRD_PARTY_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_APPLICATION_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_ERROR_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PORTABILITY_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PERFORMANCE_ARB),
+			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_OTHER_ARB)
+		};
+
+#undef GLOOPS_ENUM_STR
+
+		enum class SeveriyLevel : uint { NOTIFICATION = 0, LOW = 1, MEDIUM = 2, HIGH = 3, UNKNOWN = 4 };
+		struct GLseverity {
+			std::string str;
+			SeveriyLevel lvl;
+		};
+
+#define GLOOPS_SEV_STR(name,sev) { name, { #name, sev } }
+
+		static const std::map<GLenum, GLseverity> severities = {
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH, SeveriyLevel::HIGH),
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM, SeveriyLevel::MEDIUM),
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW, SeveriyLevel::LOW),
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_NOTIFICATION, SeveriyLevel::NOTIFICATION),
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH_ARB, SeveriyLevel::HIGH),
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM_ARB, SeveriyLevel::MEDIUM),
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW_ARB, SeveriyLevel::LOW),
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH_AMD, SeveriyLevel::HIGH),
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM_AMD, SeveriyLevel::MEDIUM),
+			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW_AMD, SeveriyLevel::LOW)
+		};
+
+#undef GLOOPS_SEV_STR
+
+		GLseverity glSev;
+		auto sev_it = severities.find(severity);
+		if (sev_it != severities.end()) {
+			glSev = sev_it->second;
+		} else {
+			glSev.str = "UNKOWN SEVERITY";
+			glSev.lvl = SeveriyLevel::UNKNOWN;
+		}
+
+		if ((uint)glSev.lvl <= (uint)SeveriyLevel::NOTIFICATION) {
+			return;
+		}
+
+		std::string err_str = "UNKNOWN GL ERROR";
+		auto err_it = errors.find(type);
+		if (err_it != errors.end()) {
+			err_str = err_it->second;
+		}
+
+		std::cout << "GL callback :  source : " << source << ", error = " << err_str <<
+			", severity = " << glSev.str << "\n" << message << std::endl;
+	}
+
 	SubWindow::SubWindow(const std::string& name, const v2i& renderingSize,
 		GuiFunc guiFunction, UpdateFunc upFunc, RenderingFunc renderFunc)
 		: guiFunc(guiFunction), updateFunc(upFunc), renderingFunc(renderFunc), win_name(name)
@@ -371,10 +456,10 @@ namespace gloops {
 			subInput = win.subInput(viewport(), !inFocus);
 
 			if (showInput) {
-				if (ImGui::Begin((win_name + " input").c_str())) {
-					win.guiInputDebug();
-				}
-				ImGui::End();
+				//if (ImGui::Begin((win_name + " input").c_str())) {
+				//	win.guiInputDebug();
+				//}
+				//ImGui::End();
 
 				if (ImGui::Begin((win_name + " subinput").c_str())) {
 					guiInputDebug();

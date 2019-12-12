@@ -58,11 +58,13 @@ namespace gloops {
 	void Input::guiInputDebug() const
 	{	
 		if (ImGui::CollapsingHeader("mousep & vp")) {
-			std::stringstream ss;
-			ss << "vp : " << viewport().min().transpose() << " " << viewport().max().transpose() << "\n";
-			ss << "mouse pos " << mousePosition().transpose();
-			ImGui::Text(ss.str());
+			std::stringstream sa, sb;
+			sa << "vp : " << viewport().min().transpose() << " " << viewport().max().transpose() << "\n";
+			ImGui::Text(sa.str());
+			sb << "mouse pos " << mousePosition().transpose();
+			ImGui::TextColored(sb.str(), viewport().contains(mousePosition() + viewport().min()) ? v4f(1, 1, 1, 1) : v4f(1, 0, 0, 1));		
 		}
+
 		if (ImGui::CollapsingHeader("mousek")) {
 			std::stringstream ss;
 			ss << "scroll : " << _mouseScroll.transpose() << "\n";
@@ -80,14 +82,14 @@ namespace gloops {
 		}
 	}
 
-	v2d Viewport::normalizedUV(const v2d& pos) const
-	{
-		return 2.0 * (pos - center()).cwiseQuotient(diagonal());
-	}
+	//v2d Viewport::normalizedUV(const v2d& pos) const
+	//{
+	//	return 2.0 * (pos - center()).cwiseQuotient(diagonal());
+	//}
 
 	v2d Viewport::uv(const v2d& pos) const
 	{
-		return (pos - min()).cwiseQuotient(diagonal());
+		return pos.cwiseQuotient(diagonal());
 	}
 
 	double Viewport::width() const
