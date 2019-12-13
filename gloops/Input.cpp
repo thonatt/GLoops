@@ -87,10 +87,10 @@ namespace gloops {
 	//	return 2.0 * (pos - center()).cwiseQuotient(diagonal());
 	//}
 
-	v2d Viewport::uv(const v2d& pos) const
-	{
-		return pos.cwiseQuotient(diagonal());
-	}
+	//v2d Viewport::uv(const v2d& pos) const
+	//{
+	//	return pos.cwiseQuotient(diagonal());
+	//}
 
 	double Viewport::width() const
 	{

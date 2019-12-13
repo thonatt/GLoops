@@ -596,7 +596,7 @@ namespace gloops {
 		void updateRotation(const Input& i)
 		{
 			if (status == IDLE && i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT) && !i.keyActive(GLFW_KEY_LEFT_CONTROL)) {
-				clickedUV = i.viewport().uv(i.mousePosition()).template cast<T>();
+				clickedUV = i. template mousePositionUV<T>();
 				if (i.keyActive(GLFW_KEY_LEFT_SHIFT)) {
 					status = ROLL;
 				} else {
@@ -604,7 +604,7 @@ namespace gloops {
 				}
 			}
 			if (status == ROTATION || status == ROLL) {
-				currentUV = i.viewport().uv(i.mousePosition()).template cast<T>();
+				currentUV = i. template mousePositionUV<T>();
 
 				if (i.buttonUnclicked(GLFW_MOUSE_BUTTON_LEFT)) {
 					getTmpTrackBall(eye, center, up);
@@ -617,12 +617,12 @@ namespace gloops {
 		void updateTranslation(const Input& i)
 		{
 			if (status == IDLE && i.buttonClicked(GLFW_MOUSE_BUTTON_RIGHT) && !i.keyActive(GLFW_KEY_LEFT_CONTROL)) {
-				clickedUV = i.viewport().uv(i.mousePosition()).template cast<T>();
+				clickedUV = i. template mousePositionUV<T>();
 				status = TRANSLATION;
 			}
-			if (status == TRANSLATION) {
-				currentUV = i.viewport().uv(i.mousePosition()).template cast<T>();
 
+			if (status == TRANSLATION) {
+				currentUV = i. template mousePositionUV<T>();
 				if (i.buttonUnclicked(GLFW_MOUSE_BUTTON_RIGHT)) {
 					getTmpTrackBall(eye, center, up);
 					status = IDLE;

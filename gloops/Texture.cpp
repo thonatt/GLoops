@@ -282,6 +282,7 @@ namespace gloops {
 	
 		src.bindRead(attach_from);
 
+		//gl_check();
 		//gl_framebuffer_check(GL_READ_FRAMEBUFFER);
 		//gl_framebuffer_check(GL_DRAW_FRAMEBUFFER);
 
@@ -290,7 +291,7 @@ namespace gloops {
 		glBlitFramebuffer(0, 0, src.w(), src.h(),
 			0, 0, w(), h(), mask, filter);
 
-		gl_check();
+		//gl_check();
 		//gl_framebuffer_check(GL_READ_FRAMEBUFFER);
 		//gl_framebuffer_check(GL_DRAW_FRAMEBUFFER);
 	}
@@ -300,8 +301,6 @@ namespace gloops {
 		Framebuffer src = Framebuffer::empty(tex.w(), tex.h());
 		src.bind(GL_READ_FRAMEBUFFER);
 		glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, tex.getParams().target, tex.getId(), 0);
-		
-		//gl_framebuffer_check(GL_READ_FRAMEBUFFER);
 
 		blitFrom(src, GL_COLOR_ATTACHMENT0, attach_to, filter, GL_COLOR_BUFFER_BIT);
 	}

@@ -11,12 +11,6 @@ namespace gloops {
 	public:
 		using BBox2d::BBox2d;
 
-		////returns uv in [-1,1] if inside viewport
-		//v2d normalizedUV(const v2d & pos) const;
-
-		//returns uv, in [0,1] when inside viewport
-		v2d uv(const v2d & pos) const;
-
 		double width() const;
 		double height() const;
 	};
@@ -25,6 +19,8 @@ namespace gloops {
 
 	class Input {
 
+		template<typename T>
+		using v2 = Eigen::Matrix<T, 2, 1>;
 	public:
 		using Key = std::pair<InputType, int>;
 		using KeyStatus = std::map<Key, int>;
@@ -38,10 +34,12 @@ namespace gloops {
 
 		bool insideViewport() const;
 
+		//returns uv, in [0,1] when inside viewport
 		template<typename T = double>
-		Eigen::Matrix<T, 2, 1> mousePosition() const {
-			return _mousePosition.template cast<T>();
-		}
+		v2<T> mousePositionUV() const;
+
+		template<typename T = double>
+		v2<T> mousePosition() const;
 
 		const double & scrollY() const;
 
@@ -62,4 +60,15 @@ namespace gloops {
 		Viewport _viewport;
 	};
 
+	template<typename T>
+	Input::v2<T> Input::mousePosition() const
+	{
+		return _mousePosition.template cast<T>();
+	}
+
+	template<typename T>
+	Input::v2<T> Input::mousePositionUV() const
+	{
+		return mousePosition().cwiseQuotient(viewport().diagonal()).template cast<T>();
+	}
 }

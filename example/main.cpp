@@ -52,7 +52,7 @@ gloops::SubWindow checker_subwin()
 		[&](gloops::Framebuffer& dst) 
 	{
 		gloops::gl_check();
-		dst.blitFrom(checkers_tex, filter);
+		dst.blitFrom(checkers_tex, GL_COLOR_ATTACHMENT0, filter);
 		gloops::gl_check();
 
 		if (doReadback) {
@@ -97,6 +97,8 @@ gloops::SubWindow mesh_viewer_subwin()
 
 		colPicker("sphere color : ", &color[0]);
 		colPicker("background color", &background_color[0], ImGuiColorEditFlags_NoAlpha);
+
+		ImGui::Separator();
 
 		if (ImGui::CollapsingHeader("meshes data")) {
 			ImGui::Separator();
