@@ -2,15 +2,16 @@
 
 #include "config.hpp"
 
-#include <string>
 #include <list>
 #include <thread>
 #include <atomic>
 #include <mutex>
-#include <memory>
 #include <map>
 
 namespace gloops {
+
+	uchar* stbiImageLoad(const std::string& path, int& w, int& h, int& n);
+	void stbiImageFree(uchar* ptr);
 
 	template<typename T, int N>
 	class Image {
@@ -67,7 +68,7 @@ namespace gloops {
 			static_assert(std::is_same_v<T, uchar>, "GLoops only support uchar sbti image loads");
 
 			int  w, h, n;
-			uchar * data_ptr = stbi_load(path.c_str(), &w, &h, &n, 0);
+			uchar* data_ptr = stbiImageLoad(path, w, h, n);
 			
 			if (n != N) {
 				std::cout << " wrong number of channels when loading " << path << "\n" <<
@@ -79,7 +80,7 @@ namespace gloops {
 				_path = path;
 				allocate(w, h);
 				std::memcpy(_pixels.data(), data_ptr, _pixels.size() * sizeof(T));
-				stbi_image_free(data_ptr);
+				stbiImageFree(data_ptr);
 				std::cout << path << " : " << _w << " x " << _h << " x " << N << std::endl;
 			} else {
 				std::cout << " cant load " << path << std::endl;

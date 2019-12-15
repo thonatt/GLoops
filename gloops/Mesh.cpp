@@ -81,32 +81,28 @@ namespace gloops {
 	{
 		Mesh::setVertices(verts);
 		dirtyBuffers = true;
-		setAttribute(vertices, location);
-		//setAttributeLocation(Position, location);
+		attributes_mapping[location] = VertexAttribute(vertices, location);
 	}
 
 	void MeshGL::setNormals(const Normals& norms, GLuint location)
 	{
 		Mesh::setNormals(norms);
 		dirtyBuffers = true;
-		setAttribute(normals, location);
-		//setAttributeLocation(Normal, location);		
+		attributes_mapping[location] = VertexAttribute(normals, location);
 	}
 
 	void MeshGL::setColors(const Colors& cols, GLuint location)
 	{
 		Mesh::setColors(cols);
 		dirtyBuffers = true;
-		setAttribute(colors, location);
-		//setAttributeLocation(Color, location);
+		attributes_mapping[location] = VertexAttribute(colors, location);
 	}
 
 	void MeshGL::setUVs(const UVs& texCoords, GLuint location)
 	{
 		Mesh::setUVs(texCoords);
 		dirtyBuffers = true;
-		setAttribute(uvs, location);
-		//setAttributeLocation(UV, location);
+		attributes_mapping[location] = VertexAttribute(uvs, location);
 	}
 
 	void MeshGL::modifyAttributeLocation(GLuint currentLocation, GLuint newLocation)

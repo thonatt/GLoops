@@ -10,8 +10,10 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
-#include <iostream>
 #include <string>
+#include <vector>
+#include <memory>
+#include <iostream>
 #include <fstream>
 
 #define SHADER_STR(version, shader)  std::string("#version " #version "\n" #shader)
@@ -61,7 +63,7 @@ namespace gloops_types {
 	using BBox2d = Eigen::AlignedBox<double, 2>;
 
 	template<typename T>
-	using Ray = Eigen::ParametrizedLine<T, 3>;
+	using RayT = Eigen::ParametrizedLine<T, 3>;
 }
 
 namespace ImGui {

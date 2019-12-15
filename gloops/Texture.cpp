@@ -1,14 +1,23 @@
 #include "Texture.hpp"
 #include "Debug.hpp"
 
+#include <iostream>
+#include <chrono>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "../extlibs/stb_image/stb_image.h"
 
-#include <iostream>
-#include <chrono>
-
 namespace gloops {
+
+	uchar* stbiImageLoad(const std::string& path, int& w, int& h, int& n)
+	{
+		return stbi_load(path.c_str(), &w, &h, &n, 0);
+	}
+
+	void stbiImageFree(uchar* ptr)
+	{
+		stbi_image_free(ptr);
+	}
 
 	const TexParamsFormat TexParamsFormat::RGB = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_RGB);
 	const TexParamsFormat TexParamsFormat::BGR = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_BGR);

@@ -44,15 +44,26 @@ namespace gloops {
 		int interval = mode->refreshRate / desired_fps;
 		std::cout << "screen refresh rate : " << mode->refreshRate << "fps" << std::endl;
 		glfwSwapInterval(interval);
-		
-		{
-			using namespace std::placeholders;
-			setCallback<KEY_BUTTON>(std::bind(&Window::keyboardCallback, this, _1, _2, _3, _4, _5));
-			setCallback<MOUSE_BUTTON>(std::bind(&Window::mouseButtonCallback, this, _1, _2, _3, _4));
-			setCallback<MOUSE_SCROLL>(std::bind(&Window::mouseScrollCallback, this, _1, _2, _3));
-			setCallback<MOUSE_POSITION>(std::bind(&Window::mousePositionCallback, this, _1, _2, _3));
-			setCallback<WIN_RESIZE>(std::bind(&Window::winResizeCallback, this, _1, _2, _3));
-		}
+
+		setupGLFWcallback(glfwSetCursorPosCallback, [&](GLFWwindow* win, double x, double y) {
+			mousePositionCallback(win, x, y);
+		});
+
+		setupGLFWcallback(glfwSetScrollCallback, [&](GLFWwindow* win, double x, double y) {
+			mouseScrollCallback(win, x, y);
+		});
+
+		setupGLFWcallback(glfwSetMouseButtonCallback, [&](GLFWwindow* win, int button, int action, int mods) {
+			mouseButtonCallback(win, button, action, mods);
+		});
+
+		setupGLFWcallback(glfwSetKeyCallback, [&](GLFWwindow* win, int key, int scancode, int action, int mods) {
+			keyboardCallback(win, key, scancode, action, mods);
+		});
+
+		setupGLFWcallback(glfwSetWindowSizeCallback, [&](GLFWwindow* win, int w, int h) {
+			winResizeCallback(win, w, h);
+		});
 
 		GLenum glew_init_code = glewInit();
 		if ( glew_init_code == GLEW_OK) {

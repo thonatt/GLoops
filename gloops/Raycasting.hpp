@@ -73,7 +73,7 @@ namespace gloops {
 
 	class Raycaster {
 
-		using Ray = Ray<float>;
+		using Ray = RayT<float>;
 
 	public:
 		using DevicePtr = std::shared_ptr<RTCDeviceTy>;

@@ -24,7 +24,7 @@ namespace gloops {
 		const Triangles& getTriangles() const;
 		const Colors& getColors() const;
 
-		void setTriangles(const Triangles& tris);
+		virtual void setTriangles(const Triangles& tris);
 		void setVertices(const Vertices& tris);
 		void setUVs(const UVs& tris);
 		void setNormals(const Normals& tris);
@@ -110,7 +110,7 @@ namespace gloops {
 
 		MeshGL();
 
-		void setTriangles(const Triangles& tris);
+		virtual void setTriangles(const Triangles& tris) override;
 		void setVertices(const Vertices& verts, GLuint location = PositionDefaultLocation);
 		void setUVs(const UVs& uvs, GLuint location = UVDefaultLocation);
 		void setNormals(const Normals& normals, GLuint location = NormalDefaultLocation);

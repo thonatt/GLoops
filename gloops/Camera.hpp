@@ -285,11 +285,10 @@ namespace gloops {
 	template<typename T>
 	class RaycastingCamera : public Camera<T> {
 		using Cam = Camera<T>;
-		using Ray = Ray<T>;
 		using v2 = typename Cam::v2;
 		using v3 = typename Cam::v3;
 		using Quat = typename Cam::Quat;
-
+		using Ray = RayT<T>;
 
 	public:
 

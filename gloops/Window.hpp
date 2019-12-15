@@ -10,64 +10,30 @@
 
 namespace gloops {
 
-	enum CallbackType { MOUSE_POSITION, MOUSE_SCROLL, MOUSE_BUTTON, KEY_BUTTON, WIN_RESIZE };
+	//helpers to get C pointer function form capturing lambda
 
-	template <CallbackType type, typename T>
-	struct CallbackHelper;
+	template<typename F>
+	struct CfuncPointer;
 
-	template <CallbackType type, typename R, typename... Params>
-	struct CallbackHelper<type, R(Params...)> {
-		
-		template <typename... Args>
-		static R callback(Args... args) {
-			func(args...);
-		}
-		static std::function<R(Params...)> func;
-	};
+	template< typename F, typename ReturnType, typename... Args>
+	struct CfuncPointer< ReturnType(F::*)(Args...) const> {
+	
+		using f_ptr = ReturnType(*)(Args...);
 
-	template<CallbackType type, typename R, typename... Params>
-	std::function<R(Params...)> CallbackHelper<type, R(Params...)>::func;
-
-
-	template <CallbackType type>
-	struct GLFWcallbackSignature;
-
-	template<> struct GLFWcallbackSignature<MOUSE_POSITION> {
-		using Helper = CallbackHelper<MOUSE_POSITION, void(GLFWwindow*, double, double)>;
-		template<typename F> static void setup(GLFWwindow * win, F && f) {
-			Helper::func = f;
-			glfwSetCursorPosCallback(win, Helper::callback);
+		static f_ptr get(F && f) {
+			static F f_internal = std::forward<F>(f);
+			return [](Args... args) {
+				return f_internal(std::forward<Args>(args)...);
+			};
 		}
 	};
 
-	template<> struct GLFWcallbackSignature<MOUSE_SCROLL> {
-		using Helper = CallbackHelper<MOUSE_SCROLL, void(GLFWwindow*, double, double)>;
-		template<typename F> static void setup(GLFWwindow * win, F && f) {
-			Helper::func = f;
-			glfwSetScrollCallback(win, Helper::callback);
-		}
-	};
-	template<> struct GLFWcallbackSignature<MOUSE_BUTTON> {
-		using Helper = CallbackHelper<MOUSE_BUTTON, void(GLFWwindow*, int, int, int)>;
-		template<typename F> static void setup(GLFWwindow * win, F && f) {
-			Helper::func = f;
-			glfwSetMouseButtonCallback(win, Helper::callback);
-		}
-	};
-	template<> struct GLFWcallbackSignature<KEY_BUTTON> {
-		using Helper = CallbackHelper<KEY_BUTTON, void(GLFWwindow*, int, int, int, int)>;
-		template<typename F> static void setup(GLFWwindow * win, F && f) {
-			Helper::func = f;
-			glfwSetKeyCallback(win, Helper::callback);
-		}
-	};
-	template<> struct GLFWcallbackSignature<WIN_RESIZE> {
-		using Helper = CallbackHelper<WIN_RESIZE, void(GLFWwindow*, int, int)>;
-		template<typename F> static void setup(GLFWwindow * win, F && f) {
-			Helper::func = f;
-			glfwSetWindowSizeCallback(win, Helper::callback);
-		}
-	};
+	template<typename F>
+	auto getCfuncPtr(F && f){
+		return CfuncPointer<decltype(&F::operator())>::get(std::forward<F>(f));
+	}
+
+	///////////////////////////////////////////////////////////////////////////////////////
 
 	class Framebuffer;
 
@@ -105,16 +71,15 @@ namespace gloops {
 		void mousePositionCallback(GLFWwindow * win, double x, double y);
 		void winResizeCallback(GLFWwindow * win, int w, int h);
 
+		template<typename GLFWfun, typename Lambda>
+		void setupGLFWcallback(const GLFWfun& glfwFun, Lambda&& f) {
+			glfwFun(window.get(), getCfuncPtr(std::forward<Lambda>(f)));
+		}
+
 		static void glErrorCallBack(GLenum source, GLenum type, GLuint id, GLenum severity, 
 			GLsizei length, const GLchar* message, const void* userParam);
 
-		template<CallbackType type, typename F>
-		void setCallback(F && f) {
-			GLFWcallbackSignature<type>::setup(window.get(), std::forward<F>(f));
-		}
-
 		std::shared_ptr<GLFWwindow> window;
-		//GLFWwindow * window = nullptr;
 		v2i size;
 	};
 
