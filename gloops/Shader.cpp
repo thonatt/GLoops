@@ -4,6 +4,9 @@
 #include <vector>
 #include <filesystem>
 
+#include "Texture.hpp"
+#include "Mesh.hpp"
+
 namespace gloops {
 
 	GLuniformInternalBase::GLuniformInternalBase(const std::string& _name)
@@ -21,10 +24,11 @@ namespace gloops {
 		return location >= 0;
 	}
 
-	void GLuniformInternalBase::switchShader(GLuint shaderID)
+	void GLuniformInternalBase::switchShader(GLuint shaderID) const
 	{
-		if (location_map.count(shaderID) > 0) {
-			location = location_map[shaderID];
+		auto locIt = location_map.find(shaderID);
+		if (locIt != location_map.end()) { 
+			location = locIt->second;
 		} else {
 			std::cout << " cant find location of " << name << std::endl;
 		}
@@ -145,14 +149,13 @@ namespace gloops {
 	void ShaderProgram::use() const
 	{
 		glUseProgram(id);
-		for (auto & uniform : uniforms) {
+		for (const auto& uniform : uniforms) {
 			uniform->switchShader(id);
 			uniform->send();
 		}
 	}
 
-	ShaderCollection::ShaderCollection(const std::string& folder_path)
-		: shader_folder(folder_path)
+	ShaderCollection::ShaderCollection()
 	{
 		initBasic();
 		initPhong();
@@ -160,9 +163,44 @@ namespace gloops {
 		initTexturedMesh();
 	}
 
-	const ShaderProgram& ShaderCollection::get(Name name) 
+	void ShaderCollection::renderBasicMesh(const Cameraf& eye, const MeshGL& mesh, const v4f& _color)
 	{
-		return shader_map.at(name);
+		mvp = eye.viewProj() * mesh.model();
+		color = _color;
+		shader_map[Name::BASIC].use();
+		mesh.draw();
+	}
+
+	void ShaderCollection::renderPhongMesh(const Cameraf& eye, const v3f& light_position, const MeshGL& mesh)
+	{
+		mvp = eye.viewProj() * mesh.model();
+		model = mesh.model();
+		rotation = mesh.rotation();
+		cam_pos = eye.position();
+		light_pos = light_position;
+		shader_map[Name::PHONG].use();
+		mesh.draw();
+	}
+
+	void ShaderCollection::renderPhongMesh(const Cameraf& eye, const MeshGL& mesh)
+	{
+		renderPhongMesh(eye, eye.position(), mesh);
+	}
+
+	void ShaderCollection::renderColoredMesh(const Cameraf& eye, const MeshGL& mesh)
+	{
+		mvp = eye.viewProj() * mesh.model();
+		shader_map[Name::COLORED_MESH].use();
+		mesh.draw();
+	}
+
+	void ShaderCollection::renderTexturedMesh(const Cameraf& eye, const MeshGL& mesh, const Texture& tex, float _alpha)
+	{
+		mvp = eye.viewProj() * mesh.model();
+		alpha = _alpha;
+		tex.bindSlot(GL_TEXTURE0);
+		shader_map[Name::TEXTURED_MESH].use();
+		mesh.draw();
 	}
 
 	void ShaderCollection::initBasic()
@@ -210,11 +248,12 @@ namespace gloops {
 				out vec3 out_pos;
 				out vec3 out_normal;
 
-				uniform mat4 mvp;
-
+				uniform mat4 mvp, model;
+				uniform mat3 rotation;
+	
 				void main(){
-					out_pos = position;
-					out_normal = normal;
+					out_pos = (model*vec4(position,1.0)).xyz;
+					out_normal = rotation*normal;
 					gl_Position = mvp*vec4(position,1.0);
 				}
 			)",
@@ -247,7 +286,7 @@ namespace gloops {
 			)"
 		);
 		//shader.initFromPaths(shader_folder + "phong.vert", shader_folder + "phong.frag");
-		shader.addUniforms(mvp, light_pos, cam_pos);
+		shader.addUniforms(mvp, model, rotation, light_pos, cam_pos);
 		shader_map[Name::PHONG] = shader;
 	}
 

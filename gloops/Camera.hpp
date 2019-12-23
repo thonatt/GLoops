@@ -67,10 +67,10 @@ namespace gloops {
 
 		m4 view() const
 		{
-			//m3 rot = getRotation().conjugate().toRotationMatrix();
-			//return transformation<T>(-rot * position(), rot);
-
-			return transformation<T>(position(), getRotation().toRotationMatrix()).inverse();
+			m4 t = transformationMatrix<T>(position(), rotmat);
+			m4 tt = t * t * t * t;
+			m4 ti = t.inverse();
+			return tt + ti - tt;
 		}
 
 		m4 proj() const
@@ -94,27 +94,34 @@ namespace gloops {
 
 		v3 dir() const
 		{
-			return rotation.toRotationMatrix()*(-v3::UnitZ());
+			return -getRotMat() * v3::UnitZ();
 		}
 
 		v3 right() const
 		{
-			return rotation.toRotationMatrix()*v3::UnitX();
+			return getRotMat() * v3::UnitX();
 		}
 
 		v3 up() const
 		{
-			return rotation.toRotationMatrix()*v3::UnitY();
+			return getRotMat() * v3::UnitY();
 		}
 
-		Line3 line(const v2 & uv) const 
+		Line3 line(const v2& uv) const
 		{
+			update();
 			return Line3::Through(position(), unproject(v3(uv[0], uv[1], 1)));
 		}
 
 		const Quat & getRotation() const
 		{
 			return rotation;
+		}
+
+		const m3& getRotMat() const 
+		{
+			update();
+			return rotmat;
 		}
 
 		T zNear() const
@@ -127,7 +134,8 @@ namespace gloops {
 			return _zFar;
 		}
 
-		T aspect() const {
+		T aspect() const
+		{
 			return _aspect;
 		}
 
@@ -265,7 +273,11 @@ namespace gloops {
 		void update() const
 		{
 			if (dirty) {
-				viewproj = proj()*view();
+				rotmat = rotation.toRotationMatrix();
+				m4 p = proj();
+				m4 v = view();
+				viewproj = p * v;
+				//viewproj = proj()*view();
 				inv_viewproj = viewproj.inverse();
 				dirty = false;
 			}
@@ -276,6 +288,7 @@ namespace gloops {
 		T _fovy, _aspect, _zNear, _zFar;
 
 		mutable m4 viewproj, inv_viewproj;
+		mutable m3 rotmat;
 		mutable bool dirty = true;
 	};
 
@@ -483,9 +496,10 @@ namespace gloops {
 			dirty = true;
 		}
 
-		static Trackball fromMesh(const Mesh& mesh, bool computeRaycaster = false)
+		template<typename ... Meshes>
+		static Trackball fromMesh(const Mesh& mesh, const Meshes& ...meshes)
 		{
-			auto box = mesh.getBoundingBox();
+			auto box = mergeBoundingBoxes(mesh.getBoundingBox(), meshes.getBoundingBox()...);
 
 			Camera<T> cam;
 			v3 eye = box.center() + T(1) * box.diagonal();
@@ -498,11 +512,17 @@ namespace gloops {
 
 			Trackball out(cam, dist);
 
-			if (computeRaycaster) {
-				Raycaster rc;
-				rc.addMesh(mesh);
-				out.setRaycaster(rc);
-			}
+			return out;
+		}
+
+		template<typename ... Meshes>
+		static Trackball fromMeshComputingRaycaster(const Mesh& mesh, const Meshes& ...meshes)
+		{
+			Trackball out = fromMesh(mesh, meshes...);
+			
+			Raycaster rc;
+			rc.addMesh(mesh, meshes...);
+			out.setRaycaster(rc);
 
 			return out;
 		}
@@ -510,14 +530,14 @@ namespace gloops {
 		Cam getCamera() const
 		{
 			checkCam();
-			if (status != IDLE) {
+			if (status == IDLE) {
+				return _camera; 			
+			} else {
 				v3 tmp_eye, tmp_center, tmp_up;
 				getTmpTrackBall(tmp_eye, tmp_center, tmp_up);
 				Cam cam = _camera;
 				cam.setLookAt(tmp_eye, tmp_center, tmp_up);
 				return cam;
-			} else {
-				return _camera;
 			}
 		}
 
@@ -559,7 +579,13 @@ namespace gloops {
 		void update(const Input& i)
 		{
 			v2d vp_diag = i.viewport().diagonal();
-			setAspect(T(vp_diag[0] / vp_diag[1]));
+			double ratio = T(vp_diag[0] / vp_diag[1]);
+			
+			if (std::isnan(ratio)) {
+				std::cout << "nan vp ratio : " << vp_diag.transpose() << std::endl;
+				ratio = 1.0;
+			}
+			setAspect(T(ratio));
 
 			updateRadius(i);
 			updateRotation(i);

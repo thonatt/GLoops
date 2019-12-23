@@ -31,7 +31,7 @@ gloops::SubWindow checker_subwin()
 
 	static GLint filter = GL_NEAREST;
 
-	return gloops::SubWindow("checkers",
+	auto sub = gloops::SubWindow("checkers",
 		v2i(600, 600),
 		[&] 
 	{
@@ -39,8 +39,11 @@ gloops::SubWindow checker_subwin()
 			filter = linear ? GL_LINEAR : GL_NEAREST;
 		}
 		std::stringstream s;
+		s << "cursor current color : ";
 		if (doReadback) {
-			s << "current color : " << (currentCol ? "black" : "white");
+			s << (currentCol ? "black" : "white");
+		} else {
+			s << "cursor out of texture viewport";
 		}
 		ImGui::Text(s.str());
 	},
@@ -63,31 +66,37 @@ gloops::SubWindow checker_subwin()
 		}
 
 	});
+
+	sub.renderComponent.backgroundColor = v4f(0.3f, 0.3f, 0.3f, 1.0f);
+
+	return sub;
 }
 
-gloops::SubWindow mesh_viewer_subwin() 
+gloops::SubWindow& mesh_viewer_subwin()
 {
 	static gloops::MeshGL
-		sphere = gloops::MeshGL::getSphere(1, v3f(1, 1, 1)),
-		cube = gloops::MeshGL::getCube(gloops::BBox3f(v3f(-3, -3, -3), v3f(-1, -1, -1)));
-	
+		sphere = gloops::Mesh::getSphere().setScaling(2.0f),
+		cube = gloops::Mesh::getCube(gloops::BBox3f(v3f(-3, -3, -3), v3f(-1, -1, -1))),
+		axis = gloops::MeshGL::getAxis();
+
 	static gloops::Raycaster raycaster;
 	raycaster.addMesh(sphere, cube);
 
-	static gloops::Trackballf tb = gloops::Trackballf::fromMesh(sphere);
+	static gloops::Trackballf tb = gloops::Trackballf::fromMesh(sphere, cube);
 	tb.setRaycaster(raycaster);
 
 	static gloops::ShaderCollection shaders;
 
 	static v4f color = { 1.0f, 0.0f, 1.0f, 0.5f };
-	static v4f background_color = { 0.9f, 0.9f, 0.9f, 1.0f };
 
 	static std::map<std::string, gloops::MeshGL> meshes;
 	meshes["cube"] = cube;
 	meshes["sphere"] = sphere;
+	meshes["axis"] = axis;
 
-	return gloops::SubWindow("mesh viewer", v2i(800, 600),
-		[&]
+	static gloops::SubWindow mesh_viewer("mesh viewer", v2i(800, 600));
+	
+	mesh_viewer.setGuiFunction([&]
 	{
 		auto colPicker = [&](const std::string& s, float* ptr, uint flag = 0) {
 			ImGui::Text(s);
@@ -96,7 +105,9 @@ gloops::SubWindow mesh_viewer_subwin()
 		};
 
 		colPicker("sphere color : ", &color[0]);
-		colPicker("background color", &background_color[0], ImGuiColorEditFlags_NoAlpha);
+		colPicker("clear color", &mesh_viewer.clearColor[0], ImGuiColorEditFlags_NoAlpha);
+		colPicker("background color", &mesh_viewer.renderComponent.backgroundColor[0], ImGuiColorEditFlags_NoAlpha);
+		colPicker("gui background color", &mesh_viewer.guiComponent.backgroundColor[0], ImGuiColorEditFlags_NoAlpha);
 
 		ImGui::Separator();
 
@@ -128,36 +139,74 @@ gloops::SubWindow mesh_viewer_subwin()
 				ImGui::Separator();
 			}
 		}
+	});
+
+	mesh_viewer.setUpdateFunction([&](const gloops::Input& i){
+		tb.update(i);
+	});
+
+	mesh_viewer.setRenderingFunction([&](gloops::Framebuffer& dst)
+	{
+		dst.bindDraw();
+
+		gloops::Cameraf eye = tb.getCamera();
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		shaders.renderColoredMesh(eye, axis);
+
+		shaders.renderPhongMesh(eye, cube);
+
+		shaders.renderBasicMesh(eye, sphere, color);
+
+		glDisable(GL_BLEND);
+	});
+
+	return mesh_viewer;
+}
+
+gloops::SubWindow mesh_modes_subwin()
+{
+	using namespace gloops;
+
+	static MeshGL torusA = Mesh::getTorus(3, 1), torusB = Mesh::getTorus(3, 1)
+		.setTranslation(3 * v3f::UnitY()).setRotation(Eigen::AngleAxis<float>(pi<float>() / 2, v3f::UnitY()));
+
+	torusB.mode = GL_LINE;
+
+	static gloops::Trackballf tb = gloops::Trackballf::fromMeshComputingRaycaster(torusA, torusB);
+
+	static gloops::ShaderCollection shaders;
+
+	return gloops::SubWindow("render modes", v2i(800, 600),
+		[&]
+	{
+
+		static std::map<GLenum, std::string> modes = {
+			{ GL_POINT, "points" },
+			{ GL_LINE, "lines" },
+			{ GL_FILL, "fill" }
+		};
+
+		for (const auto& mode : modes) {
+			if (ImGui::RadioButton(mode.second.c_str(), torusB.mode == mode.first)) {
+				torusB.mode = mode.first;
+			}
+			ImGui::SameLine();
+		}
+
 	},
 		[&](const gloops::Input& i)
 	{
 		tb.update(i);
 	},
-		[&](gloops::Framebuffer& dst) 
+		[&](gloops::Framebuffer& dst)
 	{
-		dst.clear(background_color);
 		dst.bindDraw();
 
-		gloops::Cameraf eye = tb.getCamera();
-
-		shaders.mvp = eye.viewProj();
-		shaders.cam_pos = eye.position();
-		shaders.light_pos = eye.position();
-		shaders.color = color;
-
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-		shaders.get(gloops::ShaderCollection::Name::COLORED_MESH).use();
-		gloops::MeshGL::getAxis().draw();
-
-		shaders.get(gloops::ShaderCollection::Name::PHONG).use();
-		cube.draw();
-
-		shaders.get(gloops::ShaderCollection::Name::BASIC).use();
-		sphere.draw();
-
-		glDisable(GL_BLEND);
+		shaders.renderPhongMesh(tb.getCamera(), torusA);
+		shaders.renderPhongMesh(tb.getCamera(), torusB);
 	});
 }
 
@@ -166,30 +215,23 @@ int main(int argc, char** argv)
 	auto win = gloops::Window("GLoops example");
 
 	auto win_checkers = checker_subwin();
-	auto win_mesh = mesh_viewer_subwin();
+	auto& win_mesh = mesh_viewer_subwin();
+	auto win_mesh_modes = mesh_modes_subwin();
 
-	bool showImGuiDemo = false, showCheckers = false, showMesh = false;
+	auto demoOptions = gloops::WindowComponent("demo settings", gloops::WindowComponent::Type::GUI, 
+		[&] (const gloops::Window& win) {
+		ImGui::Checkbox("checkers texture", &win_checkers.active());
+		ImGui::Checkbox("mesh viewer", &win_mesh.active());
+		ImGui::Checkbox("mesh modes", &win_mesh_modes.active());
+	});
 
 	win.renderingLoop([&]{
-		if (ImGui::Begin("demo settings")) {
-			ImGui::Checkbox("ImGui demo", &showImGuiDemo);
-			ImGui::Checkbox("checkers texture", &showCheckers);
-			ImGui::Checkbox("mesh viewer", &showMesh);
-		}
-		ImGui::End();
 
-		if (showImGuiDemo) {
-			win.showImguiDemo();
-		}
-
-		if (showCheckers) {
-			win_checkers.show(win);
-		}
-
-		if (showMesh) {
-			win_mesh.show(win);
-		}
+		demoOptions.show(win);
 		
+		win_checkers.show(win);
+		win_mesh.show(win);
+		win_mesh_modes.show(win);
 	});
 
 }

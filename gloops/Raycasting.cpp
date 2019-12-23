@@ -66,7 +66,7 @@ namespace gloops {
 		Vertice* dst_verts = reinterpret_cast<Vertice*>(rtcSetNewGeometryBuffer(
 			geometry.get(), RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(Vertice), verts.size()));
 		for (uint i = 0; i < verts.size(); ++i, ++dst_verts) {
-			*dst_verts = verts[i];
+			*dst_verts = applyTransformationMatrix(mesh.model(), verts[i]);
 		}
 
 		rtcCommitGeometry(geometry.get());

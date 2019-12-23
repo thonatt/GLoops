@@ -16,7 +16,7 @@
 #include <iostream>
 #include <fstream>
 
-#define SHADER_STR(version, shader)  std::string("#version " #version "\n" #shader)
+#define GLOOPS_SHADER_STR(version, shader)  std::string("#version " #version "\n" #shader)
 
 namespace gloops_types {
 
@@ -75,6 +75,10 @@ namespace ImGui {
 	inline void TextColored(const std::string& s, const gloops_types::v4f& c) {
 		ImGui::TextColored({ c[0],c[1],c[2],c[3] }, "%s", s.c_str());
 	}
+
+	inline float TitleHeight() {
+		return ImGui::GetTextLineHeight() + ImGui::GetStyle().FramePadding.y * 2.0f;
+	}
 }
 
 namespace gloops {
@@ -91,11 +95,12 @@ namespace gloops {
 	class GLptr {
 
 	public:
-		using Generator = std::function<void(GLuint*)>;
-		using Destructor = std::function<void(const GLuint*)>;
+		//using Generator = std::function<void(GLuint*)>;
+		//using Destructor = std::function<void(const GLuint*)>;
 	
 		GLptr() = default;
 
+		template<typename Generator, typename Destructor>
 		GLptr(Generator&& generator, Destructor&& destructor) {
 			_id = std::shared_ptr<GLuint>(new GLuint(), destructor);
 			generator(_id.get());
@@ -114,21 +119,28 @@ namespace gloops {
 	};
 
 	class GLptrArray {
-		using Generator = std::function<void(GLsizei, GLuint*)>;
-		using Destructor = std::function<void(GLsizei, const GLuint*)>;
+		//using Generator = std::function<void(GLsizei, GLuint*)>;
+		//using Destructor = std::function<void(GLsizei, const GLuint*)>;
 
 		using GLuints = std::vector<GLuint>;
 
 		GLptrArray() = default;
 
+		template<typename Generator, typename Destructor>
 		GLptrArray(Generator&& generator, Destructor&& destructor, size_t n) {
 			_ids = std::shared_ptr<GLuints>(new GLuints(n), 
-				[&](const GLuints* ptr) { destructor(static_cast<GLsizei>(ptr->size()), ptr->data()); });
+				[&](const GLuints* ptr) {
+				destructor(static_cast<GLsizei>(ptr->size()), ptr->data());
+			});
 			generator(static_cast<GLsizei>(_ids->size()), _ids->data());
 		}
 
 		GLuint operator[](size_t idx) const {
 			return (*_ids)[idx];
+		}
+
+		operator bool() const {
+			return _ids.operator bool();
 		}
 
 	protected:
@@ -193,53 +205,65 @@ namespace gloops {
 	}
 
 	template<typename T>
-	Eigen::Matrix<T, 4, 4> rotation(const Eigen::Matrix<T, 3, 3>& rot) {
-		Eigen::Matrix<T, 4, 4> out = Eigen::Matrix<T, 4, 4> ::Identity();
+	Eigen::Matrix<T, 4, 4> rotationMatrix(const Eigen::Matrix<T, 3, 3>& rot) {
+		Eigen::Matrix<T, 4, 4> out = Eigen::Matrix<T, 4, 4>::Identity();
 		out.template block<3, 3>(0, 0) = rot;
 		return out;
 	}
 
 	template<typename T>
-	Eigen::Matrix<T, 4, 4> translation(const Eigen::Matrix<T, 3, 1>& position) {
-		Eigen::Matrix<T, 4, 4> out = Eigen::Matrix<T, 4, 4> ::Identity();
+	Eigen::Matrix<T, 4, 4> translationMatrix(const Eigen::Matrix<T, 3, 1>& position) {
+		Eigen::Matrix<T, 4, 4> out = Eigen::Matrix<T, 4, 4>::Identity();
 		out.template block<3, 1>(0, 3) = position;
 		return out;
 	}
 
 	template<typename T>
-	Eigen::Matrix<T, 4, 4> scaling(T scale) {
-		return Eigen::DiagonalMatrix<T, 4>(Eigen::Matrix<T, 4, 1>(scale, scale, scale, static_cast<T>(1)));
+	Eigen::Matrix<T, 4, 4> scalingMatrix(T scale) {
+		return Eigen::DiagonalMatrix<T, 4>(Eigen::Matrix<T, 4, 1>(scale, scale, scale, T(1)));
 	}
 
 	template<typename T>
-	Eigen::Matrix<T, 4, 4> scaling(const Eigen::Matrix<T, 3, 1>& scale) {
-		return Eigen::DiagonalMatrix<T, 4>(Eigen::Matrix<T, 4, 1>(scale[0], scale[1], scale[2], static_cast<T>(1)));
+	Eigen::Matrix<T, 4, 4> scalingMatrix(const Eigen::Matrix<T, 3, 1>& scale) {
+		return Eigen::DiagonalMatrix<T, 4>(Eigen::Matrix<T, 4, 1>(scale[0], scale[1], scale[2], T(1)));
 	}
 
 	template<typename T>
-	Eigen::Matrix<T, 4, 4> transformation(const Eigen::Matrix<T, 3, 1>& position) {
-		return translation(position);
+	Eigen::Matrix<T, 4, 4> transformationMatrix(const Eigen::Matrix<T, 3, 1>& position) {
+		return translationMatrix(position);
 	}
 
 	template<typename T>
-	Eigen::Matrix<T, 4, 4> transformation(const Eigen::Matrix<T, 3, 1>& position, const Eigen::Matrix<T, 3, 3>& rot) {
-		return translation(position) * rotation(rot);
+	Eigen::Matrix<T,4,4> transformationMatrix(const Eigen::Matrix<T, 3, 1>& position, const Eigen::Matrix<T, 3, 3>& rot) {
+		return translationMatrix(position) * rotationMatrix(rot);
 	}
 
 	template<typename T>
-	Eigen::Matrix<T, 4, 4> transformation(const Eigen::Matrix<T, 3, 1>& position, const Eigen::Matrix<T, 3, 3>& rot, const Eigen::Matrix<T, 3, 1>& scale) {
-		return translation(position) * rotation(rot) * scaling(scale);
+	Eigen::Matrix<T, 4, 4> transformationMatrix(const Eigen::Matrix<T, 3, 1>& position, const Eigen::Matrix<T, 3, 3>& rot, const Eigen::Matrix<T, 3, 1>& scale) {
+		return translationMatrix(position) * rotationMatrix(rot) * scalingMatrix(scale);
 	}
 
 	template<typename T>
-	Eigen::Matrix<T, 4, 4> transformation(const Eigen::Matrix<T, 3, 1>& position, const Eigen::Matrix<T, 3, 3>& rot, T scale) {
-		return translation(position) * rotation(rot) * scaling(scale);
+	Eigen::Matrix<T, 4, 4> transformationMatrix(const Eigen::Matrix<T, 3, 1>& position, const Eigen::Matrix<T, 3, 3>& rot, T scale) {
+		return translationMatrix(position) * rotationMatrix(rot) * scalingMatrix(scale);
 	}
 
 	template<typename T>
-	Eigen::Matrix<T, 3, 1> applyTransformation(const Eigen::Matrix<T, 4, 4>& t, const Eigen::Matrix<T, 3, 1>& p) {
+	Eigen::Matrix<T, 3, 1> applyTransformationMatrix(const Eigen::Matrix<T, 4, 4>& t, const Eigen::Matrix<T, 3, 1>& p) {
 		Eigen::Matrix<T, 4, 1> x = t * Eigen::Matrix<T, 4, 1>(p[0], p[1], p[2], 1.0);
 		return Eigen::Matrix<T, 3, 1>(x[0], x[1], x[2]);
 	}
+
+	inline BBox3f mergeBoundingBoxes() { return BBox3f(); }
+
+	template<typename ... Boxes>
+	BBox3f mergeBoundingBoxes(const BBox3f& box, const Boxes& ...boxes) {
+		if (sizeof...(Boxes) == 0) {
+			return box;
+		} 
+		BBox3f tmp = box;
+		return tmp.extend(mergeBoundingBoxes(boxes...));
+	}
+
 
 }

@@ -11,9 +11,20 @@ namespace gloops {
 	public:
 		using BBox2d::BBox2d;
 
+		void gl() const;
+
 		double width() const;
 		double height() const;
+
+		double top() const;
+		double bottom() const;
+		double left() const;
+		double right() const;
+
+		bool checkNan() const;
 	};
+
+	std::ostream& operator<<(std::ostream& s, const Viewport& vp);
 
 	enum class InputType { KEYBOARD, MOUSE };
 
@@ -44,6 +55,7 @@ namespace gloops {
 		const double & scrollY() const;
 
 		const Viewport & viewport() const;
+		Viewport& viewport();
 
 		Input subInput(const Viewport& vp, bool forceEmpty = false) const;
 

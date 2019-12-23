@@ -17,7 +17,7 @@ namespace gloops {
 			GLOOPS_ENUM_STR(GL_INVALID_FRAMEBUFFER_OPERATION)
 		};
 
-		return;
+		//return;
 
 		GLenum gl_err = glGetError();
 		if (gl_err) {

@@ -7,6 +7,7 @@
 
 #include <string>
 #include <functional>
+#include <set>
 
 namespace gloops {
 
@@ -35,6 +36,42 @@ namespace gloops {
 
 	///////////////////////////////////////////////////////////////////////////////////////
 
+	class Window;
+
+	class WindowComponent : public Viewport
+	{
+
+	public:
+		enum class Type { RENDERING, GUI, DEBUG };
+
+		using Func = std::function<void(const Window&)>;
+
+		WindowComponent(const std::string& name = "", Type type = Type::RENDERING, const Func& guiFunc = {});
+
+		void show(const Window& win);
+		bool& isActive();
+
+		void resize(const Viewport& vp);
+		const std::string& name() const;
+
+		//const Viewport& viewport() const;
+
+		bool isInFocus() const;
+		Type getType() const;
+
+		v4f backgroundColor = { 0,0,0,1 };
+
+	protected:
+
+		std::string _name;
+		Func _guiFunc;
+		Type _type = Type::RENDERING;
+		bool _active = true, shouldResize = false, inFocus = false;
+	};
+
+
+	///////////////////////////////////////////////////////////////
+
 	class Framebuffer;
 
 	class Window : public Input {
@@ -55,13 +92,15 @@ namespace gloops {
 
 		void clear();
 
-		const v2i & winSize() const;
+		v2i winSize() const;
 
 		void bind() const;
 
 		void displayFramebuffer(const Framebuffer & src);
 
 		void renderingLoop(const std::function<void()>& renderingFunc);
+
+		void registerWindowComponent(WindowComponent& subwin) const;
 
 	protected:
 
@@ -76,12 +115,24 @@ namespace gloops {
 			glfwFun(window.get(), getCfuncPtr(std::forward<Lambda>(f)));
 		}
 
+		void setupWinViewport();
+
+		void automatic_subwins_layout();
+
 		static void glErrorCallBack(GLenum source, GLenum type, GLuint id, GLenum severity, 
 			GLsizei length, const GLchar* message, const void* userParam);
 
 		std::shared_ptr<GLFWwindow> window;
-		v2i size;
+		WindowComponent debugComponent;
+		v2d menuBarSize = { 0,0 };
+		mutable std::map<std::string, std::reference_wrapper<WindowComponent>> subWinsCurrent, subWinsNext;
 	};
+
+	//enum class WinFlags : uint {
+	//	UpdateWhenNotInFocus = 1 << 1
+	//};
+	//inline WinFlags operator| (WinFlags f, WinFlags g) { return (WinFlags)((uint)f | (uint)g); }
+	//inline bool operator& (WinFlags f, WinFlags g) { return (bool)((uint)f & (uint)g); }
 
 	class SubWindow : public Input {
 
@@ -91,23 +142,47 @@ namespace gloops {
 		using GuiFunc = std::function<void(void)>;
 
 		SubWindow(const std::string& name, const v2i& renderingSize,
-			GuiFunc guiFunction = {}, UpdateFunc upFunc = {}, RenderingFunc renderFunc = {});
+			const GuiFunc& guiFunction = {},
+			const UpdateFunc& upFunc = {},
+			const RenderingFunc& renderFunc = {}
+		);
+
+		void setGuiFunction(const GuiFunc& guiFunction);
+		void setUpdateFunction(const UpdateFunc& upFunc);
+		void setRenderingFunction(const RenderingFunc& renderFunc);
 
 		void show(const Window & win);
+
+		//const std::string& name() const;
+		//void setViewport(const Viewport& vp);
+
+		//void setFlags(WinFlags _flags);
+
+		bool& active();
+
+		v4f clearColor = { 0.1f, 0.1f, 0.1f, 1.0f };
+
+		WindowComponent renderComponent, guiComponent;
 
 	private:
 		void fitContent(v2f& outOffset, v2f& outSize, const v2f& vpSize, const v2f& availableSize);
 		std::string gui_text(const std::string& str) const;
-
-		static const float ImGuiTitleHeight();
+		void menuBar();
+		void debugWin();
 
 		Framebuffer framebuffer;
+		
 		GuiFunc guiFunc; 
 		UpdateFunc updateFunc;
 		RenderingFunc renderingFunc;
+
 		std::string win_name;
 		v2f gui_render_size;
-		bool inFocus = false, shouldUpdate = false, showGui = true, showInput = false, showDebug = false;
+		//Viewport winviewport;
+
+		bool shouldUpdate = false, showGui = true,
+			showDebug = false, updateWhenNoFocus = false;
+
 	};
 
 }

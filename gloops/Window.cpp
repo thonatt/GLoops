@@ -36,8 +36,7 @@ namespace gloops {
 			std::cout << " Window or OpenGL context creation failed " << std::endl;	
 		} 
 		
-		glfwGetFramebufferSize(window.get(), &size[0], &size[1]);
-		_viewport = Viewport(v2d(0, 0), size. template cast<double>());
+		setupWinViewport();
 
 		glfwMakeContextCurrent(window.get());
 		int desired_fps = 60;
@@ -62,6 +61,10 @@ namespace gloops {
 		});
 
 		setupGLFWcallback(glfwSetWindowSizeCallback, [&](GLFWwindow* win, int w, int h) {
+			winResizeCallback(win, w, h);
+		});
+
+		setupGLFWcallback(glfwSetWindowPosCallback, [&](GLFWwindow* win, int w, int h) {
 			winResizeCallback(win, w, h);
 		});
 
@@ -97,6 +100,17 @@ namespace gloops {
 		float scaling = std::max(xscale, yscale);
 		ImGui::GetStyle().ScaleAllSizes(scaling);
 		ImGui::GetIO().FontGlobalScale = scaling;
+
+
+		debugComponent = WindowComponent("registered wins", WindowComponent::Type::GUI, [&](const Window& win) {
+			std::stringstream s;
+			s << "subviews : " << std::endl;
+			for (auto& component : subWinsCurrent) {
+				const auto& vp = component.second.get();
+				s << "\t" << component.first << " " << vp.center().transpose() << " " << vp.diagonal().transpose() << std::endl;
+			}
+			ImGui::Text(s.str());
+		});
 
 		// Setup Platform/Renderer bindings
 		ImGui_ImplGlfw_InitForOpenGL(window.get(), false);
@@ -149,31 +163,20 @@ namespace gloops {
 	{
 		Framebuffer::bindDefault();
 		glClearColor(0, 0, 0, 0);
+		viewport().gl();
 
-		gl_check();
 		ImGui::Render();
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-		glViewport(0, 0, size[0], size[1]);
-
-		gl_check();
-
-		auto data = ImGui::GetDrawData();
-
-		gl_check();
-
-		ImGui_ImplOpenGL3_RenderDrawData(data);
-
-		gl_check();
 
 		glfwSwapBuffers(window.get());
 
-		gl_check();
+		std::swap(subWinsCurrent, subWinsNext);
+		subWinsNext.clear();
 
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
-
-		gl_check();
 	}
 
 	int Window::shouldClose() const
@@ -188,22 +191,26 @@ namespace gloops {
 
 	void Window::clear()
 	{
+		//bind();
+		gl_check();
 		bind();
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); 
+		glClearColor(0, 0, 0, 0);
+		glClear((GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+		gl_check();
 	}
 
-	const v2i & Window::winSize() const
+	v2i Window::winSize() const
 	{
-		return size;
+		return viewport().diagonal().template cast<int>();
 	}
 
 	void Window::bind() const
 	{
 		Framebuffer::bindDefault();
-		glViewport(0, 0, winSize()[0], winSize()[1]);
+		//glViewport(0, 0, winSize()[0], winSize()[1]);
 	}
 
-	void Window::displayFramebuffer(const Framebuffer & src)
+	void Window::displayFramebuffer(const Framebuffer& src)
 	{
 		src.bind(GL_READ_FRAMEBUFFER);
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -224,28 +231,59 @@ namespace gloops {
 	{
 		bool pause = false, pauseNext = false;
 
+		bool automaticLayout = true, showImGuiDemo = false, showDebug = false;
+
 		while (!shouldClose()) {
-			
+
 			pause = pauseNext;
 
 			if (!pause) {
 				clear();
 			}
-			
+
 			pollEvents();
-			
+
 			if (ImGui::BeginMainMenuBar()) {
-				if (ImGui::BeginMenu("options")) {
-					ImGui::MenuItem("pause", 0, &pauseNext, true);
+				menuBarSize = v2d(ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
+				if (ImGui::BeginMenu("Options")) {
+					ImGui::MenuItem("Automatic layout", 0, &automaticLayout);	
+					ImGui::MenuItem("Pause", 0, &pauseNext);
+					ImGui::MenuItem("Debug", 0, &showDebug);
+					ImGui::MenuItem("ImGui demo", 0, &showImGuiDemo);				
+					ImGui::EndMenu();
 				}
+				ImGui::EndMainMenuBar();
 			}
 
+			if (automaticLayout) {
+				automatic_subwins_layout();
+			}
+
+			if (showDebug) {
+				debugComponent.show(*this);
+				if(ImGui::Begin("window debug")) {
+					std::stringstream s;
+					s << viewport();
+					ImGui::Text(s.str());
+				}
+				ImGui::End();
+			}
+			
 			if (!pause) {
 				renderingFunc();
 			} 
 
+			if (showImGuiDemo) {
+				ImGui::ShowDemoWindow();
+			}
+
 			swapBuffers();	
 		}
+	}
+
+	void Window::registerWindowComponent(WindowComponent& subwin) const
+	{
+		subWinsNext.emplace(subwin.name(), std::ref(subwin));
 	}
 
 	void Window::keyboardCallback(GLFWwindow * win, int key, int scancode, int action, int mods)
@@ -290,17 +328,58 @@ namespace gloops {
 		if (w == 0 || h == 0) {
 			return;
 		}
+		setupWinViewport();
+	}
 
-		size = { w,h };
+	void Window::setupWinViewport()
+	{
+		v2i size;
+		glfwGetWindowSize(window.get(), &size[0], &size[1]);
+		_viewport = Viewport(v2d(0, menuBarSize.y()), size.template cast<double>());
+	}
 
-		float xscale, yscale;
-		glfwGetMonitorContentScale(glfwGetPrimaryMonitor(), &xscale, &yscale);
-		float scaling = std::max(xscale, yscale);
+	void Window::automatic_subwins_layout()
+	{
+		size_t num_render_win = 0, num_gui_win = 0;
+		for (const auto& win : subWinsCurrent) {
+			if (win.second.get().getType() == WindowComponent::Type::RENDERING) {
+				++num_render_win;
+			} else {
+				++num_gui_win;
+			}
+		}
 
-		//float scaling = std::max(winSize()[0] / 1920.0f, winSize()[1] / 1080.0f);
-		ImGui::GetStyle() = ImGuiStyle();
-		ImGui::GetStyle().ScaleAllSizes(scaling);
-		ImGui::GetIO().FontGlobalScale = scaling;
+		double ratio = 3.0 / 4.0;
+
+		Viewport render_grid_vp = Viewport(viewport().min(), viewport().min() + viewport().diagonal().cwiseProduct(v2d(ratio, 1.0)));
+		Viewport gui_grid_vp = Viewport(viewport().min() + viewport().diagonal().cwiseProduct(v2d(ratio, 0.0)), viewport().max());
+
+		const size_t render_grid_size = (size_t)std::ceil(std::sqrt(num_render_win));
+		v2d render_grid_res = v2d(render_grid_size, render_grid_size);
+		v2d gui_grid_res = v2d(1, num_gui_win);
+
+		auto drawVP = [](WindowComponent& comp, const Viewport& vp, const v2i& coords, const v2d& res) {
+			v2d uv = vp.diagonal().cwiseQuotient(res);
+			Viewport subVP = Viewport(
+				vp.min() + uv.cwiseProduct(coords.template cast<double>()),
+				vp.min() + uv.cwiseProduct((coords + v2i(1, 1)).template cast<double>())
+			);
+			comp.resize(subVP);
+		};
+
+		size_t render_win_id = 0, gui_win_id = 0;
+
+		for (auto& win : subWinsCurrent) {
+			auto& comp = win.second.get();
+			if (comp.getType() == WindowComponent::Type::RENDERING) {
+				v2i coords = v2i(render_win_id % render_grid_size, render_win_id / render_grid_size);
+				drawVP(comp, render_grid_vp, coords, render_grid_res);
+				++render_win_id;
+			} else {
+				drawVP(comp, gui_grid_vp, v2i(0, gui_win_id), gui_grid_res);
+				++gui_win_id;
+			}
+		}
 	}
 
 	void Window::glErrorCallBack(GLenum source, GLenum type, GLuint id, GLenum severity,
@@ -361,7 +440,7 @@ namespace gloops {
 		enum class SeveriyLevel : uint { NOTIFICATION = 0, LOW = 1, MEDIUM = 2, HIGH = 3, UNKNOWN = 4 };
 		struct GLseverity {
 			std::string str;
-			SeveriyLevel lvl;
+			SeveriyLevel lvl = SeveriyLevel::UNKNOWN;
 		};
 
 #define GLOOPS_SEV_STR(name,sev) { name, { #name, SeveriyLevel::sev } }
@@ -390,7 +469,7 @@ namespace gloops {
 			glSev.lvl = SeveriyLevel::UNKNOWN;
 		}
 
-		if ((uint)glSev.lvl <= (uint)SeveriyLevel::NOTIFICATION) {
+		if ((uint)glSev.lvl < (uint)SeveriyLevel::NOTIFICATION) {
 			return;
 		}
 
@@ -404,119 +483,159 @@ namespace gloops {
 			", severity = " << glSev.str << "\n" << message << std::endl;
 	}
 
-	SubWindow::SubWindow(const std::string& name, const v2i& renderingSize,
-		GuiFunc guiFunction, UpdateFunc upFunc, RenderingFunc renderFunc)
-		: guiFunc(guiFunction), updateFunc(upFunc), renderingFunc(renderFunc), win_name(name)
+	WindowComponent::WindowComponent(const std::string& name, Type type, const Func& guiFunc)
+		: Viewport(v2d(0, 0), v2d(1, 1)), _name(name), _guiFunc(guiFunc), _type(type)
 	{
-		TexParams params = TexParams::RGBA;
-		params.setMipmapStatus(false).setWrapS(GL_CLAMP_TO_EDGE).setWrapT(GL_CLAMP_TO_EDGE);
-		framebuffer = Framebuffer(renderingSize[0], renderingSize[1], 4, params),
-		_viewport = Viewport(v2d(0, ImGuiTitleHeight()), v2d(renderingSize[0], renderingSize[1] + ImGuiTitleHeight()));
 	}
 
-	void SubWindow::show(const Window & win)
+	void WindowComponent::show(const Window& win)
 	{
-		inFocus = false;
-		shouldUpdate = false;
+		if (_active && _guiFunc) {
 
-		if (ImGui::Begin(win_name.c_str(), 0, ImGuiWindowFlags_MenuBar)) {
-			inFocus = ImGui::IsWindowFocused();
+			win.registerWindowComponent(*this);
 
-			if (ImGui::BeginMenuBar()) {
-				if (ImGui::BeginMenu(gui_text("settings").c_str())) {
-					ImGui::MenuItem(gui_text("gui").c_str(), NULL, &showGui);
-					ImGui::MenuItem(gui_text("debug").c_str(), NULL, &showDebug);
-					ImGui::MenuItem(gui_text("input").c_str(), NULL, &showInput);
+			if (shouldResize) {
+				ImGui::SetNextWindowPos(ImVec2((float)min()[0], (float)min()[1]));
+				ImGui::SetNextWindowSize(ImVec2((float)diagonal()[0], (float)diagonal()[1]));
+				shouldResize = false;
+			}
 
-					if (ImGui::BeginMenu(gui_text("rendering res").c_str())) {
-						gui_render_size = v2f(framebuffer.w(), framebuffer.h());
+			inFocus = false;
 
-						bool changed = false;
-						if (ImGui::SliderFloat(gui_text("W").c_str(), &gui_render_size[0], 1, (float)viewport().width())) {
-							gui_render_size[1] = framebuffer.h() * gui_render_size[0] / (float)framebuffer.w();
-							changed = true;
-						}
-						if (ImGui::SliderFloat(gui_text("H").c_str(), &gui_render_size[1], 1, (float)viewport().height())) {
-							gui_render_size[0] = framebuffer.w() * gui_render_size[1] / (float)framebuffer.h();
-							changed = true;
-						}
+			const auto& bg = backgroundColor;
 
-						if (changed) {
-							framebuffer.resize((int)std::ceil(gui_render_size[0]), (int)std::ceil(gui_render_size[1]));
-						}
+			ImGui::PushStyleColor(ImGuiCol_WindowBg, { bg[0], bg[1], bg[2], bg[3] });
 
-						ImGui::EndMenu();
+			if (ImGui::Begin(_name.c_str(), 0, (_type == Type::RENDERING ? ImGuiWindowFlags_MenuBar : 0) )) {
 
-					}
+				v2d screenTopLeft(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y);
+				v2d availableSize(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y);
+				//std::cout << _name << " topleft / available : " << screenTopLeft.transpose() << " " << availableSize.transpose() << std::endl;
 
-					ImGui::EndMenu();
+				static_cast<Viewport&>(*this) = Viewport(screenTopLeft, screenTopLeft + availableSize);
+
+				//std::cout << _name << " vp min max : " << min().transpose() << " " << max().transpose() << std::endl;
+				//std::cout << _name <<  " " << this << std::endl;
+
+				if (ImGui::IsItemHovered()) {
+					ImGui::CaptureKeyboardFromApp(false);
+					ImGui::CaptureMouseFromApp(false);
 				}
-				ImGui::EndMenuBar();
+
+				inFocus |= ImGui::IsWindowFocused();
+
+				_guiFunc(win);
+			}
+			ImGui::End();
+
+			ImGui::PopStyleColor();
+
+
+		} 
+		
+	}
+
+	bool& WindowComponent::isActive()
+	{
+		return _active;
+	}
+
+	void WindowComponent::resize(const Viewport& vp)
+	{
+		static_cast<Viewport&>(*this) = vp;
+		shouldResize = true;
+	}
+
+	const std::string& WindowComponent::name() const
+	{
+		return _name;
+	}
+
+	bool WindowComponent::isInFocus() const
+	{
+		return inFocus;
+	}
+
+	WindowComponent::Type WindowComponent::getType() const
+	{
+		return _type;
+	}
+
+	SubWindow::SubWindow(const std::string& name, const v2i& renderingSize,
+		const GuiFunc& guiFunction, const UpdateFunc& upFunc, const RenderingFunc& renderFunc)
+		: guiFunc(guiFunction), updateFunc(upFunc), renderingFunc(renderFunc), win_name(name)
+	{
+		v2i render_size = renderingSize.cwiseMax(v2i(1, 1));
+
+		TexParams params = TexParams::RGBA;
+		params.setMipmapStatus(false).setWrapS(GL_CLAMP_TO_EDGE).setWrapT(GL_CLAMP_TO_EDGE);	
+		framebuffer = Framebuffer(render_size[0], render_size[1], 4, params);
+		
+		//std::cout << "subwin rsize : " << render_size.transpose() << std::endl;
+
+		_viewport = Viewport(v2d(0, ImGui::TitleHeight()), v2d(render_size[0], render_size[1] + ImGui::TitleHeight()));
+
+
+		//std::cout << name << " ctor : rcom " << &renderComponent << std::endl;
+
+		renderComponent = WindowComponent(name + "##render", WindowComponent::Type::RENDERING, [&](const Window& win) {
+
+			shouldUpdate = false;
+
+			menuBar();
+
+			if (!viewport().checkNan()) {
+				std::cout << "vp nan" << std::endl;
+			}
+			if (!renderComponent.checkNan()) {
+				std::cout << "rendercomp nan" << std::endl;
+			}
+			if (!guiComponent.checkNan()) {
+				std::cout << "guicomp nan" << std::endl;
 			}
 
-			if (showGui) {
-				if (ImGui::Begin((win_name + " gui").c_str())) {
-					shouldUpdate = ImGui::IsWindowFocused();
-					if (guiFunc) {
-						guiFunc();
-					}
-				}
-				ImGui::End();
+
+			//std::cout << win_name << " rcom " << &renderComponent << std::endl;
+
+			v2f offset, size;
+
+			//std::cout << "vp diag / rcomp diag  : " << viewport().diagonal().transpose() << " " << renderComponent.diagonal().transpose() << std::endl;
+			
+			fitContent(offset, size, viewport().diagonal().cwiseMax(v2d(1, 1)).template cast<float>(), renderComponent.diagonal().template cast<float>());
+			
+			//std::cout << "offset / size : " << offset.transpose() << " " << size.transpose() << std::endl;
+
+			if (offset.hasNaN() || size.hasNaN()) {
+				std::cout << "offset size " << offset.transpose() << " " << size.transpose() << std::endl;
 			}
 
-			v2f screenTopLeft(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y);
-			v2f availableSize(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y);
+			v2f screenTopLeft = renderComponent.min().template cast<float>() + offset;
+			v2f screenBottomRight = screenTopLeft + size;
 
-			v2f offset, size, screenBottomRight;
-			fitContent(offset, size, viewport().diagonal().cwiseMax(v2d(1,1)).template cast<float>(), availableSize);
-
-			screenTopLeft += offset;
-			screenBottomRight = screenTopLeft + size;
-
-			shouldUpdate = shouldUpdate || inFocus;
-
-			if (ImGui::IsItemHovered()) {
-				ImGui::CaptureKeyboardFromApp(false);
-				ImGui::CaptureMouseFromApp(false);
-			}
+			debugWin();
 
 			_viewport = Viewport(screenTopLeft.template cast<double>(), screenBottomRight.template cast<double>());
 
+			//viewport().checkNan();
+
 			Input& subInput = static_cast<Input&>(*this);
-			subInput = win.subInput(viewport(), !inFocus);
+			subInput = win.subInput(viewport(), !renderComponent.isInFocus());
 
-			if (showInput) {
-				//if (ImGui::Begin((win_name + " input").c_str())) {
-				//	win.guiInputDebug();
-				//}
-				//ImGui::End();
+			shouldUpdate |= renderComponent.isInFocus();
+			shouldUpdate |= updateWhenNoFocus;
 
-				if (ImGui::Begin((win_name + " subinput").c_str())) {
-					guiInputDebug();
-				}
-				ImGui::End();
+			if (showGui) {
+				guiComponent.show(win);
 			}
 
 			if (shouldUpdate && updateFunc) {
 				updateFunc(subInput);
 			}
-			
-			float bg = 0.0f;
-			framebuffer.clear(v4f(bg, bg, bg, 1.0), (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+
+			framebuffer.clear(clearColor, (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
 			if (renderingFunc) {
 				renderingFunc(framebuffer);
-			}
-			
-			if (showDebug) {
-				if (ImGui::Begin(gui_text("debugwin").c_str())) {
-					std::stringstream s;
-					s << " size : " << size[0] << " " << size[1] << std::endl;
-					s << " viewport : " << screenBottomRight[0] - screenTopLeft[0] << " " << screenBottomRight[1] - screenTopLeft[1] << std::endl;
-					s << " offset : " << offset[0] << " " << offset[1] << std::endl;
-					ImGui::Text(s.str());
-				}
-				ImGui::End();
 			}
 
 			ImGui::SetCursorPos({ offset[0], offset[1] });
@@ -525,24 +644,53 @@ namespace gloops {
 			ImGui::GetWindowDrawList()->AddImage(
 				framebuffer.getAttachment().getId(),
 				{ screenTopLeft[0], screenBottomRight[1] },
-				{ screenBottomRight[0], screenTopLeft[1] });
-		}
-		ImGui::End();
+				{ screenBottomRight[0], screenTopLeft[1] }
+			);
+		});
+
+		guiComponent = WindowComponent(name + " gui", WindowComponent::Type::GUI, [&](const Window& win) {
+			shouldUpdate |= ImGui::IsWindowFocused();
+			guiFunc();
+		});
+	}
+
+	void SubWindow::setGuiFunction(const GuiFunc& guiFunction)
+	{
+		guiFunc = guiFunction;
+	}
+
+	void gloops::SubWindow::setUpdateFunction(const UpdateFunc& upFunc)
+	{
+		updateFunc = upFunc;
+	}
+
+	void gloops::SubWindow::setRenderingFunction(const RenderingFunc& renderFunc)
+	{
+		renderingFunc = renderFunc;
+	}
+
+	void SubWindow::show(const Window & win)
+	{
+		renderComponent.show(win);
+	}
+
+	bool& gloops::SubWindow::active()
+	{
+		return renderComponent.isActive();
 	}
 
 	void SubWindow::fitContent(v2f& outOffset, v2f& outSize, const v2f& vpSize, const v2f& availableSize)
 	{
 		const v2f ratios = vpSize.cwiseQuotient(availableSize);
 		if (ratios.x() < ratios.y()){
-			const float aspect = vpSize.x() / vpSize.y();
 			outSize.y() = availableSize.y();
-			outSize.x() = outSize.y() * aspect;
+			outSize.x() = outSize.y() * vpSize.x() / vpSize.y();
 		} else {
-			const float aspect = vpSize.y() / vpSize.x();
 			outSize.x() = availableSize.x();
-			outSize.y() = outSize.x() * aspect;
+			outSize.y() = outSize.x() * vpSize.y() / vpSize.x();
 		}
 		outOffset = (availableSize - outSize) / 2;
+	
 	}
 
 	std::string SubWindow::gui_text(const std::string& str) const
@@ -550,9 +698,52 @@ namespace gloops {
 		return str + "##" + win_name;
 	}
 
-	const float SubWindow::ImGuiTitleHeight()
+	void gloops::SubWindow::menuBar()
 	{
-		return ImGui::GetTextLineHeight() + ImGui::GetStyle().FramePadding.y * 2.0f;
+		if (ImGui::BeginMenuBar()) {
+			if (ImGui::BeginMenu(gui_text("settings").c_str())) {
+				ImGui::MenuItem(gui_text("gui").c_str(), NULL, &showGui);
+				ImGui::MenuItem(gui_text("update when not in focus").c_str(), NULL, &updateWhenNoFocus);
+				ImGui::MenuItem(gui_text("debug").c_str(), NULL, &showDebug);
+
+				if (ImGui::BeginMenu(gui_text("rendering res").c_str())) {
+					gui_render_size = v2f(framebuffer.w(), framebuffer.h());
+
+					bool changed = false;
+					if (ImGui::SliderFloat(gui_text("W").c_str(), &gui_render_size[0], 1, (float)viewport().width())) {
+						gui_render_size[1] = framebuffer.h() * gui_render_size[0] / (float)framebuffer.w();
+						changed = true;
+					}
+					if (ImGui::SliderFloat(gui_text("H").c_str(), &gui_render_size[1], 1, (float)viewport().height())) {
+						gui_render_size[0] = framebuffer.w() * gui_render_size[1] / (float)framebuffer.h();
+						changed = true;
+					}
+
+					if (changed) {
+						framebuffer.resize((int)std::ceil(gui_render_size[0]), (int)std::ceil(gui_render_size[1]));
+					}
+
+					ImGui::EndMenu();
+
+				}
+
+				ImGui::EndMenu();
+			}
+			ImGui::EndMenuBar();
+		}
+
+	}
+
+	void gloops::SubWindow::debugWin()
+	{
+		if (showDebug) {
+			if (ImGui::Begin(gui_text("debugwin").c_str())) {
+				if (ImGui::CollapsingHeader(gui_text("input").c_str())) {
+					guiInputDebug();
+				}
+			}
+			ImGui::End();
+		}
 	}
 
 }

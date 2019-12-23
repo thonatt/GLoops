@@ -6,6 +6,8 @@
 #include <memory>
 #include <map>
 
+#include "Camera.hpp"
+
 namespace gloops {
 
 	class GLuniformInternalBase {
@@ -17,12 +19,12 @@ namespace gloops {
 
 		bool setupLocation(GLuint shaderID);
 
-		void switchShader(GLuint shaderID);
+		void switchShader(GLuint shaderID) const;
 
 	protected:		
 		std::string name;
 		std::map<GLuint, GLint> location_map;
-		GLint location = 0;
+		mutable GLint location = 0;
 	};
 
 	template<typename T>
@@ -164,6 +166,9 @@ namespace gloops {
 		GLptr id;
 	};
 
+	class MeshGL;
+	class Texture;
+
 	class ShaderCollection {
 	public:
 
@@ -171,13 +176,21 @@ namespace gloops {
 			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH
 		};
 
-		ShaderCollection(const std::string& folder_path = "");
+		ShaderCollection();
 		
-		const ShaderProgram& get(Name name);
+
+		void renderBasicMesh(const Cameraf& eye, const MeshGL& mesh, const v4f& color);
+		void renderPhongMesh(const Cameraf& eye, const v3f& light_position, const MeshGL& mesh);
+		void renderPhongMesh(const Cameraf& eye, const MeshGL& mesh);
+		void renderColoredMesh(const Cameraf& eye, const MeshGL& mesh);
+		void renderTexturedMesh(const Cameraf& eye, const MeshGL& mesh, const Texture& tex, float alpha = 1.0f);
+
+		//const ShaderProgram& get(Name name);
 
 
 	public:
-		Uniform<m4f> mvp = { "mvp" };
+		Uniform<m4f> mvp = { "mvp" }, model = { "model" };
+		Uniform<m3f> rotation = { "rotation" };
 		Uniform<v4f> color = { "color" };
 		Uniform<v3f> light_pos = { "light_pos" }, cam_pos{ "cam_pos" };
 		Uniform<float> alpha = { "alpha" };
@@ -190,7 +203,6 @@ namespace gloops {
 		void initColoredMesh();
 		void initTexturedMesh();
 
-		std::string shader_folder;
 	};
 
 }

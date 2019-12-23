@@ -42,6 +42,11 @@ namespace gloops {
 		return _viewport;
 	}
 
+	Viewport& Input::viewport()
+	{
+		return _viewport;
+	}
+
 	Input Input::subInput(const Viewport& vp, bool forceEmpty) const
 	{
 		Input sub = *this;
@@ -92,14 +97,54 @@ namespace gloops {
 	//	return pos.cwiseQuotient(diagonal());
 	//}
 
+	void Viewport::gl() const
+	{
+		glViewport(static_cast<GLint>(left()), static_cast<GLint>(top()),
+			static_cast<GLsizei>(width()), static_cast<GLsizei>(height()));
+	}
+
 	double Viewport::width() const
 	{
-		return max()[0] - min()[0];
+		return right() - left();
 	}
 
 	double Viewport::height() const
 	{
-		return max()[1] - min()[1];
+		return bottom() - top();
+	}
+
+	double Viewport::top() const
+	{
+		return min()[1];
+	}
+
+	double Viewport::bottom() const
+	{
+		return max()[1];
+	}
+
+	double Viewport::left() const
+	{
+		return min()[0];
+	}
+
+	double Viewport::right() const
+	{
+		return max()[0];
+	}
+
+	bool Viewport::checkNan() const
+	{
+		if (min().hasNaN() || max().hasNaN()) {
+			std::cout << "vp is nan " << min().transpose() << " -> " << max().transpose() << std::endl;		
+			return false;
+		}
+		return true;
+	}
+
+	std::ostream& operator<<(std::ostream& s, const Viewport& vp)
+	{
+		return s << vp.min().transpose() << " " << vp.max().transpose();
 	}
 
 }

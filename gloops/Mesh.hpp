@@ -7,7 +7,6 @@
 
 namespace gloops {
 
-
 	class Mesh {
 	public:
 		using Tri = v3u;
@@ -20,8 +19,12 @@ namespace gloops {
 		using UVs = std::vector<v2f>;
 		using Box = Eigen::AlignedBox<float, 3>;
 
+		Mesh();
+
 		const Vertices& getVertices() const;
 		const Triangles& getTriangles() const;
+		const Normals& getNormals() const;
+		const UVs& getUVs() const;
 		const Colors& getColors() const;
 
 		virtual void setTriangles(const Triangles& tris);
@@ -34,20 +37,40 @@ namespace gloops {
 
 		void computeVertexNormalsFromVertices();
 
-		const Box& getBoundingBox() const;
+		virtual const Box& getBoundingBox() const;
 
 		operator bool() const;
+
+		Mesh& setTranslation(const v3f& translation);
+		Mesh& setRotation(const Qf& rotation);
+		Mesh& setRotation(const Eigen::AngleAxisf& aa);
+		Mesh& setScaling(const v3f& scaling);
+		Mesh& setScaling(float s);
+
+		const m4f& model() const;
+		m3f rotation() const;
+		const Qf& quat() const;
+		const v3f& scaling() const;
+		const v3f& translation() const;
+
+		static Mesh getSphere(uint precision = 50);
+		static Mesh getTorus(float outerRadius, float innerRadius, uint precision = 50);
+		static Mesh getCube(const Box& box = Box(v3f(-1, -1, -1), v3f(1, 1, 1)));
 
 	protected:
 
 		mutable Box box;
-		mutable bool dirtyBox = true;
+		mutable bool dirtyBox = true, dirtyModel = true;
 
-		Triangles triangles;
-		Vertices vertices;
-		Normals normals;
-		Colors colors;
-		UVs uvs;
+		v3f _translation = { 0,0,0 }, _scaling = { 1,1,1 };
+		Qf _rotation = Qf::Identity();
+		mutable m4f _model;
+
+		std::shared_ptr<Triangles> triangles;
+		std::shared_ptr<Vertices> vertices;
+		std::shared_ptr<Normals> normals;
+		std::shared_ptr<Colors> colors;
+		std::shared_ptr<UVs> uvs;
 	};
 
 
@@ -109,6 +132,7 @@ namespace gloops {
 		using Ptr = std::shared_ptr<MeshGL>;
 
 		MeshGL();
+		MeshGL(const Mesh& mesh);
 
 		virtual void setTriangles(const Triangles& tris) override;
 		void setVertices(const Vertices& verts, GLuint location = PositionDefaultLocation);
@@ -127,11 +151,6 @@ namespace gloops {
 
 		void draw() const;
 
-		static MeshGL getSphere(float radius = 1.0f, const v3f& center = { 0,0,0 }, uint precision = 50);
-		static MeshGL getCube(const Box& box);
-		static MeshGL getCubeLines(const Box& box);
-		static MeshGL getAxis(const m4f& transformation = m4f::Identity());
-
 		GLenum mode = GL_FILL;
 		mutable GLenum primitive = GL_TRIANGLES;
 
@@ -140,6 +159,12 @@ namespace gloops {
 
 		const std::map<GLuint, VertexAttribute>& getAttributes() const;
 
+		virtual const Box& getBoundingBox() const override;
+
+		static MeshGL getCubeLines(const Box& box);
+		static MeshGL getAxis();
+		static MeshGL fromEndPoints(const std::vector<v3f>& pts);
+
 	private:
 		size_t size_of_vertex_data() const;
 
@@ -147,7 +172,7 @@ namespace gloops {
 		void updateLocations() const;
 
 		std::map<GLuint, VertexAttribute> attributes_mapping;
-		std::map<GLuint, std::any> custom_attributes;
+		std::shared_ptr<std::map<GLuint, std::any>> custom_attributes;
 
 		GLptr vao, triangleBuffer, vertexBuffer;
 		GLsizei numElements = 0;
