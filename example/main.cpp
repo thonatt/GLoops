@@ -68,6 +68,7 @@ gloops::SubWindow checker_subwin()
 	});
 
 	sub.renderComponent.backgroundColor = v4f(0.3f, 0.3f, 0.3f, 1.0f);
+	sub.updateWhenNoFocus = true;
 
 	return sub;
 }
@@ -173,28 +174,63 @@ gloops::SubWindow mesh_modes_subwin()
 	static MeshGL torusA = Mesh::getTorus(3, 1), torusB = Mesh::getTorus(3, 1)
 		.setTranslation(3 * v3f::UnitY()).setRotation(Eigen::AngleAxis<float>(pi<float>() / 2, v3f::UnitY()));
 
-	torusB.mode = GL_LINE;
-
 	static gloops::Trackballf tb = gloops::Trackballf::fromMeshComputingRaycaster(torusA, torusB);
 
 	static gloops::ShaderCollection shaders;
 
+	static gloops::ShaderProgram uv_shader;
+	uv_shader.init(R"(
+				#version 420
+				layout(location = 0) in vec3 position;
+				layout(location = 1) in vec2 uv;
+				uniform mat4 mvp;
+				out vec2 in_uv; 
+				void main() {
+					in_uv = uv;
+					gl_Position = mvp * vec4(position, 1.0);
+				}
+			)",
+		R"(
+				#version 420
+				layout(location = 0) out vec4 outColor;
+				in vec2 in_uv; 
+				void main(){
+					outColor = vec4(in_uv,0,1);
+				}
+			)"
+	);
+	uv_shader.addUniforms(shaders.mvp);
+
+	enum class Mode { POINT, LINE, TRIANGLE, UVS };
+	static std::map<uint, std::pair<Mode, gloops::MeshGL>> meshes =
+	{
+		{ 0, { Mode::UVS,  torusA, } },
+		{ 1, { Mode::UVS, torusB } },
+	};
+
 	return gloops::SubWindow("render modes", v2i(800, 600),
 		[&]
 	{
-
-		static std::map<GLenum, std::string> modes = {
-			{ GL_POINT, "points" },
-			{ GL_LINE, "lines" },
-			{ GL_FILL, "fill" }
+		static const std::map<Mode, std::pair<GLenum, std::string>> modes = {
+			{ Mode::POINT, { GL_POINT, "points"} },
+			{ Mode::LINE, { GL_LINE, "lines" } },
+			{ Mode::TRIANGLE, { GL_FILL, "fill" } },
+			{ Mode::UVS, { GL_FILL, "uvs" } }
 		};
-
-		for (const auto& mode : modes) {
-			if (ImGui::RadioButton(mode.second.c_str(), torusB.mode == mode.first)) {
-				torusB.mode = mode.first;
+		
+		for (auto& mesh : meshes) {
+			for (auto mode_it = modes.begin(); mode_it != modes.end(); ++mode_it) {
+				if (ImGui::RadioButton((mode_it->second.second + "##"  + std::to_string(mesh.first)).c_str(), mesh.second.first == mode_it->first)) {
+					mesh.second.first = mode_it->first;
+					mesh.second.second.mode = mode_it->second.first;
+				}
+				if (mode_it != (--modes.end())) {
+					ImGui::SameLine();
+				}			
 			}
-			ImGui::SameLine();
+			ImGui::Separator();
 		}
+		
 
 	},
 		[&](const gloops::Input& i)
@@ -205,8 +241,17 @@ gloops::SubWindow mesh_modes_subwin()
 	{
 		dst.bindDraw();
 
-		shaders.renderPhongMesh(tb.getCamera(), torusA);
-		shaders.renderPhongMesh(tb.getCamera(), torusB);
+		for (const auto& mesh : meshes) {
+			const MeshGL& m = mesh.second.second;
+			if (mesh.second.first == Mode::UVS) {			
+				shaders.mvp = tb.getCamera().viewProj() * m.model();
+				uv_shader.use();
+				m.draw();
+			} else {
+				shaders.renderPhongMesh(tb.getCamera(), m);
+			}
+		}
+		
 	});
 }
 

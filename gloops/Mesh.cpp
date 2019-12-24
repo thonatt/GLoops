@@ -526,7 +526,7 @@ namespace gloops {
 				const float cosp = std::cos(phi), sinp = std::sin(phi);
 				vertices[p + precision * t] = v3f(sint * cosp, sint * sinp, cost);
 				normals[p + precision * t] = vertices[p + precision * t];
-				uvs[p + precision * t] = v2f(frac_p, frac_t);
+				uvs[p + precision * t] = v2f(t / (float)precision, p / (float)precision);
 			}
 		}
 
@@ -572,7 +572,7 @@ namespace gloops {
 				const float cosp = std::cos(phi), sinp = std::sin(phi);
 				vertices[p + precision * t] = v3f(pos[0] * cosp, pos[0] * sinp, pos[1]);
 				normals[p + precision * t] = v3f(cost * cosp, cost * sinp, sint);
-				uvs[p + precision * t] = v2f(frac_p, frac_t);
+				uvs[p + precision * t] = v2f(t / (float)precision, p / (float)precision);
 			}
 		}
 

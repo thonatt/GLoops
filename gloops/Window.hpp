@@ -164,6 +164,8 @@ namespace gloops {
 
 		WindowComponent renderComponent, guiComponent;
 
+		bool updateWhenNoFocus = false;
+
 	private:
 		void fitContent(v2f& outOffset, v2f& outSize, const v2f& vpSize, const v2f& availableSize);
 		std::string gui_text(const std::string& str) const;
@@ -181,7 +183,7 @@ namespace gloops {
 		//Viewport winviewport;
 
 		bool shouldUpdate = false, showGui = true,
-			showDebug = false, updateWhenNoFocus = false;
+			showDebug = false;
 
 	};
 
