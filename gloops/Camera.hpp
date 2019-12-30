@@ -210,12 +210,23 @@ namespace gloops {
 			dirty = true;
 		}
 
+		bool operator ==(const Camera& other) const
+		{
+			return  getRotation().isApprox(other.getRotation())
+				&& position().isApprox(other.position())
+				&& fovy() == other.fovy()
+				&& aspect() == other.aspect()
+				&& zNear() == other.zNear()
+				&& zFar() == other.zFar();
+		}
+
+		bool operator !=(const Camera& other) const
+		{
+			return !(*this == other);
+		}
+
 		Camera interpolate(const Camera& other, T t) const
 		{
-			auto lerp = [](const auto& a1, const auto& a2, auto u) {
-				return a1 + u * (a2 - a1);
-			};
-
 			Camera out;
 			out.setPerspective(
 				lerp(fovy(), other.fovy(), t),
@@ -488,12 +499,22 @@ namespace gloops {
 			raycaster = _raycaster;
 		}
 
-		void setExtrinsics(const Cam& cam) {
+		void setExtrinsics(const Cam& cam)
+		{
 			T dist = (eye - center).norm();
 			eye = cam.position();
 			center = eye + dist * cam.dir();
 			up = cam.up();
 			dirty = true;
+		}
+
+		Trackball& setLookAt(const v3& _eye, const v3& _target, const v3& _up = { 0,1,0 }) 
+		{
+			eye = _eye;
+			center = _target;
+			up = _up;
+			dirty = true;
+			return *this;
 		}
 
 		template<typename ... Meshes>

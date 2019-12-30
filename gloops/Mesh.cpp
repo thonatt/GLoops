@@ -71,6 +71,17 @@ namespace gloops {
 		*colors = cols;
 	}
 
+	Mesh& Mesh::invertFaces()
+	{
+		for (Tri& tri : *triangles) {
+			tri = v3u(tri[0], tri[2], tri[1]);
+		}
+		for (v3f& normal : *normals) {
+			normal = -normal;
+		}
+		return *this;
+	}
+
 	MeshGL::MeshGL() : Mesh()
 	{
 		vao = GLptr(
@@ -515,7 +526,7 @@ namespace gloops {
 		Triangles triangles(2u * static_cast<size_t>(precision - 1) * precision);
 		UVs uvs(vertices.size());
 
-		float frac_p = 1.0f / (float)precision;
+		float frac_p = 1.0f / ((float)precision - 1.0f);
 		float frac_t = 1.0f / ((float)precision - 1.0f);
 		for (size_t t = 0; t < precision; ++t) {
 			const float theta = t * frac_t * pi<float>();
@@ -534,10 +545,9 @@ namespace gloops {
 		for (uint t = 0; t < precision - 1; ++t) {
 			for (uint p = 0; p < precision; ++p, tri_id += 2) {
 				uint current_id = p + precision * t;
-				uint offset_row = 1 - (p == precision - 1 ? precision : 0);
-				uint next_in_row = current_id + offset_row;
+				uint next_in_row = current_id + 1;
 				uint next_in_col = current_id + precision;
-				uint next_next = next_in_col + offset_row;
+				uint next_next = next_in_col + 1;
 				triangles[tri_id] = { current_id, next_in_col, next_in_row };
 				triangles[tri_id + 1] = { next_in_row, next_in_col, next_next };
 			}
@@ -560,7 +570,7 @@ namespace gloops {
 		Triangles triangles(2u * static_cast<size_t>(precision - 1)* precision);
 		UVs uvs(vertices.size());
 
-		float frac_p = 1.0f / (float)precision;
+		float frac_p = 1.0f / (float)(precision - 1.0f);
 		float frac_t = 1.0f / ((float)precision - 1.0f);
 		for (size_t t = 0; t < precision; ++t) {
 			const float theta = t * frac_t * 2 * pi<float>();
@@ -580,10 +590,9 @@ namespace gloops {
 		for (uint t = 0; t < precision - 1; ++t) {
 			for (uint p = 0; p < precision; ++p, tri_id += 2) {
 				uint current_id = p + precision * t;
-				uint offset_row = 1 - (p == precision - 1 ? precision : 0);
-				uint next_in_row = current_id + offset_row;
+				uint next_in_row = current_id + 1;
 				uint next_in_col = current_id + precision;
-				uint next_next = next_in_col + offset_row;
+				uint next_next = next_in_col + 1;
 				triangles[tri_id] = { current_id, next_in_row, next_in_col };
 				triangles[tri_id + 1] = { next_in_row, next_next, next_in_col  };
 			}
@@ -631,6 +640,11 @@ namespace gloops {
 		out.computeVertexNormalsFromVertices();
 
 		return out;
+	}
+
+	Mesh Mesh::getCube(const v3f& center, const v3f& halfDiag)
+	{
+		return getCube(Box(center - halfDiag, center + halfDiag));
 	}
 
 	MeshGL MeshGL::getCubeLines(const Box& box)

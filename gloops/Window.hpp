@@ -125,6 +125,7 @@ namespace gloops {
 		std::shared_ptr<GLFWwindow> window;
 		WindowComponent debugComponent;
 		v2d menuBarSize = { 0,0 };
+		float ratio_rendering_gui = 2 / 3.0f;
 		mutable std::map<std::string, std::reference_wrapper<WindowComponent>> subWinsCurrent, subWinsNext;
 	};
 
@@ -153,18 +154,16 @@ namespace gloops {
 
 		void show(const Window & win);
 
-		//const std::string& name() const;
-		//void setViewport(const Viewport& vp);
-
 		//void setFlags(WinFlags _flags);
 
 		bool& active();
 
 		v4f clearColor = { 0.1f, 0.1f, 0.1f, 1.0f };
 
-		WindowComponent renderComponent, guiComponent;
-
 		bool updateWhenNoFocus = false;
+
+		WindowComponent& getRenderComponent();
+		WindowComponent& getGuiComponent();
 
 	private:
 		void fitContent(v2f& outOffset, v2f& outSize, const v2f& vpSize, const v2f& availableSize);
@@ -182,9 +181,10 @@ namespace gloops {
 		v2f gui_render_size;
 		//Viewport winviewport;
 
+		std::shared_ptr<WindowComponent> renderComponent, guiComponent;
+
 		bool shouldUpdate = false, showGui = true,
 			showDebug = false;
-
 	};
 
 }

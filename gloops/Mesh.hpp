@@ -33,6 +33,8 @@ namespace gloops {
 		void setNormals(const Normals& tris);
 		void setColors(const Colors& tris);
 
+		Mesh& invertFaces();
+
 		virtual bool load(const std::string& path);
 
 		void computeVertexNormalsFromVertices();
@@ -56,6 +58,7 @@ namespace gloops {
 		static Mesh getSphere(uint precision = 50);
 		static Mesh getTorus(float outerRadius, float innerRadius, uint precision = 50);
 		static Mesh getCube(const Box& box = Box(v3f(-1, -1, -1), v3f(1, 1, 1)));
+		static Mesh getCube(const v3f& center, const v3f& halfDiag);
 
 	protected:
 

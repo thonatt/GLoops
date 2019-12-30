@@ -1,5 +1,4 @@
 #include "Raycasting.hpp"
-#include "Mesh.hpp"
 
 #include <embree3/rtcore_geometry.h>
 
@@ -27,9 +26,24 @@ namespace gloops {
 		return triId;
 	}
 
+	uint Hit::geometryId() const
+	{
+		return geomId;
+	}
+
 	float Hit::distance() const
 	{
 		return dist;
+	}
+
+	const v3f& Hit::getNormal() const
+	{
+		return normal;
+	}
+
+	const v3f& Hit::getCoords() const
+	{
+		return coords;
 	}
 
 	Raycaster::DevicePtr Raycaster::device = {};
@@ -70,7 +84,7 @@ namespace gloops {
 		}
 
 		rtcCommitGeometry(geometry.get());
-		rtcAttachGeometry(scene.get(), geometry.get());
+		meshes[rtcAttachGeometry(scene.get(), geometry.get())] = mesh;
 
 		sceneReady = false;
 	}
@@ -107,6 +121,25 @@ namespace gloops {
 			device = DevicePtr(rtcNewDevice(0), rtcReleaseDevice);
 			rtcSetDeviceErrorFunction(device.get(), &errorCallback, nullptr);
 		}
+	}
+
+	bool Raycaster::visible(const v3f& ptA, const v3f& ptB)
+	{
+		checkScene();
+		v3f seg = (ptB - ptA);
+		float dist = seg.norm();
+		Hit hit = intersect(Ray(ptA, seg / dist));
+		return !hit.successful() || (hit.distance() > dist * 0.999f);
+	}
+
+	bool Raycaster::visible(const v3f& ptA, const v3f& ptB, v3f& dir, float& dist)
+	{
+		checkScene();
+		v3f seg = (ptB - ptA);
+		dist = seg.norm();
+		dir = seg / dist;
+		Hit hit = intersect(Ray(ptA, dir));
+		return !hit.successful() || (hit.distance() > dist * 0.999f);
 	}
 
 	void Raycaster::initRayHit(RTCRayHit& out, const Ray& ray, float near, float far)

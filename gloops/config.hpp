@@ -15,30 +15,34 @@
 #include <memory>
 #include <iostream>
 #include <fstream>
+#include <thread>
+#include <random>
 
 #define GLOOPS_SHADER_STR(version, shader)  std::string("#version " #version "\n" #shader)
 
-namespace gloops_types {
+namespace gloops {
 
 	using Time = long long int;
 	using uint = unsigned int;
 	using uchar = unsigned char;
 
+	template<typename T, int N>
+	using Vec = Eigen::Matrix<T, N, 1>;
 
-	using v3b = Eigen::Matrix<uchar, 3, 1>;
+	using v3b = Vec<uchar, 3>;
 
-	using v2i = Eigen::Vector2i;
-	using v3i = Eigen::Vector3i;
-	using v4i = Eigen::Vector4i;
+	using v2i = Vec<int, 2>;
+	using v3i = Vec<int, 3>;
+	using v4i = Vec<int, 4>;
 
-	using v3u = Eigen::Matrix<uint32_t, 3, 1>;
+	using v3u = Vec<uint32_t, 3>;
 
-	using v2f = Eigen::Vector2f;
-	using v3f = Eigen::Vector3f;
-	using v4f = Eigen::Vector4f;
+	using v2f = Vec<float, 2>;
+	using v3f = Vec<float, 3>;
+	using v4f = Vec<float, 4>;
 
-	using v3d = Eigen::Vector3d;
-	using v2d = Eigen::Vector2d;
+	using v2d = Vec<double, 2>;
+	using v3d = Vec<double, 3>;
 
 	using m3f = Eigen::Matrix3f;
 	using m4f = Eigen::Matrix4f;
@@ -64,6 +68,17 @@ namespace gloops_types {
 
 	template<typename T>
 	using RayT = Eigen::ParametrizedLine<T, 3>;
+
+	template<typename T>
+	T saturate_cast(double d) {
+		return static_cast<T>(d);
+	}
+
+	template<>
+	inline uchar saturate_cast<uchar>(double d) {
+		return static_cast<uchar>(std::clamp(d, 0.0, 255.0));
+	}
+
 }
 
 namespace ImGui {
@@ -72,7 +87,7 @@ namespace ImGui {
 		ImGui::Text("%s", s.c_str());
 	}
 
-	inline void TextColored(const std::string& s, const gloops_types::v4f& c) {
+	inline void TextColored(const std::string& s, const gloops::v4f& c) {
 		ImGui::TextColored({ c[0],c[1],c[2],c[3] }, "%s", s.c_str());
 	}
 
@@ -82,8 +97,6 @@ namespace ImGui {
 }
 
 namespace gloops {
-
-	using namespace gloops_types;
 
 	template<typename FunType>
 	void renderGroup(const std::string& s, FunType&& f) {
@@ -158,6 +171,56 @@ namespace gloops {
 	inline void v3fgui(const v3f& v) {
 		ImGui::Text(std::to_string(v[0]) + " " + std::to_string(v[1]) + " " + std::to_string(v[2]));
 	}
+
+	template<typename F>
+	void parallelForEach(int from_incl, int to_excl, F&& f)
+	{
+		const int numJobs = to_excl - from_incl;
+		if (numJobs <= 0) {
+			return;
+		}
+
+		const int numCores = std::thread::hardware_concurrency();
+		const int numThreads = std::max(numCores - (numCores > 1 ? 1 : 0), 1);
+		const int numJobsPerThread = numJobs / numThreads + 1;
+
+		std::vector<std::thread> threads(numThreads);
+		for (int t = 0; t < numThreads; ++t) {
+			threads[t] = std::thread([](F&& fun, const int from, const int to) {
+				for (int i = from; i < to; ++i) {
+					fun(i);
+				}
+			}, std::forward<F>(f), t * numJobsPerThread, std::min((t + 1) * numJobsPerThread, to_excl));
+		}
+		std::for_each(threads.begin(), threads.end(), [](std::thread& t) { t.join(); });
+	}
+
+	template<typename T, int N>
+	Vec<T, N> randomVec() {
+		static std::random_device device;
+		static std::mt19937 generator(device());
+		static std::uniform_real_distribution<T> distribution(-1, 1);
+
+		Vec<T, N> out;
+		for (int i = 0; i < N; ++i) {
+			out[i] = distribution(generator);
+		}
+		return out;
+	}
+
+	template<typename T, int N>
+	Vec<T, N> randomUnit() {
+		Vec<T, N> out;
+		do {
+			out = randomVec<T, N>();
+		} while (out.squaredNorm() > T(1));
+		return out.normalized();
+	}
+
+	template<typename T, typename U>
+	auto lerp(const T& a1, const T& a2, U u) {
+		return a1 + u * (a2 - a1);
+	};
 
 	template<typename U = double>
 	constexpr U pi() {

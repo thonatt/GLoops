@@ -191,12 +191,9 @@ namespace gloops {
 
 	void Window::clear()
 	{
-		//bind();
-		gl_check();
 		bind();
 		glClearColor(0, 0, 0, 0);
 		glClear((GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
-		gl_check();
 	}
 
 	v2i Window::winSize() const
@@ -249,7 +246,8 @@ namespace gloops {
 					ImGui::MenuItem("Automatic layout", 0, &automaticLayout);	
 					ImGui::MenuItem("Pause", 0, &pauseNext);
 					ImGui::MenuItem("Debug", 0, &showDebug);
-					ImGui::MenuItem("ImGui demo", 0, &showImGuiDemo);				
+					ImGui::MenuItem("ImGui demo", 0, &showImGuiDemo);		
+					ImGui::SliderFloat("Ratio rendering/gui", &ratio_rendering_gui, 0, 1);
 					ImGui::EndMenu();
 				}
 				ImGui::EndMainMenuBar();
@@ -349,7 +347,7 @@ namespace gloops {
 			}
 		}
 
-		double ratio = 3.0 / 4.0;
+		double ratio = std::clamp<double>(ratio_rendering_gui, 0, 1);
 
 		Viewport render_grid_vp = Viewport(viewport().min(), viewport().min() + viewport().diagonal().cwiseProduct(v2d(ratio, 1.0)));
 		Viewport gui_grid_vp = Viewport(viewport().min() + viewport().diagonal().cwiseProduct(v2d(ratio, 0.0)), viewport().max());
@@ -578,7 +576,7 @@ namespace gloops {
 
 		//std::cout << name << " ctor : rcom " << &renderComponent << std::endl;
 
-		renderComponent = WindowComponent(name + "##render", WindowComponent::Type::RENDERING, [&](const Window& win) {
+		renderComponent = std::make_shared<WindowComponent>(name + "##render", WindowComponent::Type::RENDERING, [&](const Window& win) {
 
 			shouldUpdate = false;
 
@@ -587,21 +585,19 @@ namespace gloops {
 			if (!viewport().checkNan()) {
 				std::cout << "vp nan" << std::endl;
 			}
-			if (!renderComponent.checkNan()) {
+			if (!renderComponent->checkNan()) {
 				std::cout << "rendercomp nan" << std::endl;
 			}
-			if (!guiComponent.checkNan()) {
+			if (!guiComponent->checkNan()) {
 				std::cout << "guicomp nan" << std::endl;
 			}
-
-
 			//std::cout << win_name << " rcom " << &renderComponent << std::endl;
 
 			v2f offset, size;
 
 			//std::cout << "vp diag / rcomp diag  : " << viewport().diagonal().transpose() << " " << renderComponent.diagonal().transpose() << std::endl;
 			
-			fitContent(offset, size, viewport().diagonal().cwiseMax(v2d(1, 1)).template cast<float>(), renderComponent.diagonal().template cast<float>());
+			fitContent(offset, size, viewport().diagonal().cwiseMax(v2d(1, 1)).template cast<float>(), renderComponent->diagonal().template cast<float>());
 			
 			//std::cout << "offset / size : " << offset.transpose() << " " << size.transpose() << std::endl;
 
@@ -609,7 +605,7 @@ namespace gloops {
 				std::cout << "offset size " << offset.transpose() << " " << size.transpose() << std::endl;
 			}
 
-			v2f screenTopLeft = renderComponent.min().template cast<float>() + offset;
+			v2f screenTopLeft = renderComponent->min().template cast<float>() + offset;
 			v2f screenBottomRight = screenTopLeft + size;
 
 			debugWin();
@@ -619,13 +615,13 @@ namespace gloops {
 			//viewport().checkNan();
 
 			Input& subInput = static_cast<Input&>(*this);
-			subInput = win.subInput(viewport(), !renderComponent.isInFocus());
+			subInput = win.subInput(viewport(), !renderComponent->isInFocus());
 
-			shouldUpdate |= renderComponent.isInFocus();
+			shouldUpdate |= renderComponent->isInFocus();
 			shouldUpdate |= updateWhenNoFocus;
 
 			if (showGui) {
-				guiComponent.show(win);
+				guiComponent->show(win);
 			}
 
 			if (shouldUpdate && updateFunc) {
@@ -648,9 +644,11 @@ namespace gloops {
 			);
 		});
 
-		guiComponent = WindowComponent(name + " gui", WindowComponent::Type::GUI, [&](const Window& win) {
-			shouldUpdate |= ImGui::IsWindowFocused();
-			guiFunc();
+		guiComponent = std::make_shared<WindowComponent>(name + " gui", WindowComponent::Type::GUI, [&](const Window& win) {
+			shouldUpdate |= ImGui::IsWindowFocused();	
+			if (guiFunc) {
+				guiFunc();
+			}			
 		});
 	}
 
@@ -671,12 +669,22 @@ namespace gloops {
 
 	void SubWindow::show(const Window & win)
 	{
-		renderComponent.show(win);
+		renderComponent->show(win);
 	}
 
 	bool& gloops::SubWindow::active()
 	{
-		return renderComponent.isActive();
+		return renderComponent->isActive();
+	}
+
+	WindowComponent& gloops::SubWindow::getRenderComponent()
+	{
+		return *renderComponent;
+	}
+
+	WindowComponent& gloops::SubWindow::getGuiComponent()
+	{
+		return *guiComponent;
 	}
 
 	void SubWindow::fitContent(v2f& outOffset, v2f& outSize, const v2f& vpSize, const v2f& availableSize)
@@ -737,7 +745,11 @@ namespace gloops {
 	void gloops::SubWindow::debugWin()
 	{
 		if (showDebug) {
-			if (ImGui::Begin(gui_text("debugwin").c_str())) {
+			if (ImGui::Begin((win_name + "debug win").c_str())) {
+				std::stringstream s;
+				s << "framebufer id : " << framebuffer.getAttachment().getId();
+				ImGui::Text(s.str());
+
 				if (ImGui::CollapsingHeader(gui_text("input").c_str())) {
 					guiInputDebug();
 				}

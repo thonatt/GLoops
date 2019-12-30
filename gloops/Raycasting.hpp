@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.hpp"
+#include "Mesh.hpp"
 
 #include <array>
 #include <memory>
@@ -60,8 +61,11 @@ namespace gloops {
 		bool successful() const;
 
 		uint triangleId() const;
-
+		uint geometryId() const;
 		float distance() const;
+
+		const v3f& getNormal() const;
+		const v3f& getCoords() const;
 
 	protected:
 		
@@ -97,6 +101,14 @@ namespace gloops {
 		template<typename ...Meshes, typename Mesh> 
 		void addMesh(const Mesh& mesh, const Meshes& ...meshes);
 	
+		template<typename F>
+		auto interpolate(const Hit& hit, F&& meshMember );
+
+		bool visible(const v3f& ptA, const v3f& ptB);
+		bool visible(const v3f& ptA, const v3f& ptB, v3f& dir, float& dist);
+
+		void checkScene() const;
+
 	private:
 		static void initRayHit(RTCRayHit& out, const Ray& ray, float near, float far);
 
@@ -109,13 +121,13 @@ namespace gloops {
 
 		void checkDevice() const;
 
-		void checkScene() const;
-
 		void addMeshInternal(const Mesh& mesh);
 		void addMesh(){}
 
 		ScenePtr scene;
 		ContextPtr context;
+		std::map<size_t, Mesh> meshes;
+
 		mutable bool sceneReady = false;
 	};
 
@@ -176,5 +188,15 @@ namespace gloops {
 	{
 		addMeshInternal(mesh);
 		addMesh(meshes...);
+	}
+
+	template<typename F>
+	inline auto Raycaster::interpolate(const Hit& hit, F&& meshMember)
+	{
+		const v3f& uvs = hit.getCoords(); 
+		const Mesh& mesh = meshes[hit.geometryId()];
+		const Mesh::Tri& tri = mesh.getTriangles()[hit.triangleId()];
+		const auto& data = (mesh.*meshMember)();
+		return uvs[0] * data[tri[0]] + uvs[1] * data[tri[1]] + uvs[2] * data[tri[1]];
 	}
 }

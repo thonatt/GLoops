@@ -19,6 +19,61 @@ namespace gloops {
 		stbi_image_free(ptr);
 	}
 
+	Image3b checkersTexture(int w, int h, int size)
+	{
+		const int r = std::max(size, 1);
+
+		Image3b out(w, h);
+		for (int i = 0; i < h; ++i) {
+			for (int j = 0; j < w; ++j) {
+				int c = (i / r + j / r) % 2 ? 255 : 0;
+				out.pixel(j, i) = v3b(c, c, c);
+			}
+		}
+		return out;
+	}
+
+	Image3b perlinNoise(int w, int h, int size)
+	{
+		Image<float, 2> grads(w / size + 1, h / size + 1);
+		for (int i = 0; i < grads.h(); ++i) {
+			for (int j = 0; j < grads.w(); ++j) {
+				grads.pixel(j, i) = randomUnit<float, 2>();
+			}
+		}
+
+		Image1f out(w, h);
+
+		const float ratio = 1 / (float)std::max(size, 1);
+		for (int i = 0; i < h; ++i) {
+			int iy = i / size;
+			float fy = i * ratio;
+			float dy = fy - (float)iy;
+
+			for (int j = 0; j < w; ++j) {
+				int ix = j / size;		
+				float fx = j * ratio;
+				float dx = fx - (float)ix;
+
+				float vx0 = lerp(
+					grads.pixel(ix + 0, iy + 0).dot(v2f(fx - (ix + 0), fy - (iy + 0))),
+					grads.pixel(ix + 1, iy + 0).dot(v2f(fx - (ix + 1), fy - (iy + 0))),
+					dx
+				);
+
+				float vx1 = lerp(
+					grads.pixel(ix + 0, iy + 1).dot(v2f(fx - (ix + 0), fy - (iy + 1))),
+					grads.pixel(ix + 1, iy + 1).dot(v2f(fx - (ix + 1), fy - (iy + 1))),
+					dx
+				);
+			
+				out.at(j, i) = lerp(vx0, vx1, dy);
+			}
+		}
+
+		return out.convert<uchar, 3>(128,128);
+	}
+
 	const TexParamsFormat TexParamsFormat::RGB = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_RGB);
 	const TexParamsFormat TexParamsFormat::BGR = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_BGR);
 	const TexParamsFormat TexParamsFormat::RGBA = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGBA8, GL_RGBA);
