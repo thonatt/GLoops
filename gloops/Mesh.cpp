@@ -523,7 +523,7 @@ namespace gloops {
 
 		Vertices vertices(static_cast<size_t>(precision) * precision);
 		Normals normals(vertices.size());
-		Triangles triangles(2u * static_cast<size_t>(precision - 1) * precision);
+		Triangles triangles(2u * static_cast<size_t>(precision - 1) * (precision - 1));
 		UVs uvs(vertices.size());
 
 		float frac_p = 1.0f / ((float)precision - 1.0f);
@@ -543,7 +543,7 @@ namespace gloops {
 
 		uint tri_id = 0;
 		for (uint t = 0; t < precision - 1; ++t) {
-			for (uint p = 0; p < precision; ++p, tri_id += 2) {
+			for (uint p = 0; p < precision - 1; ++p, tri_id += 2) {
 				uint current_id = p + precision * t;
 				uint next_in_row = current_id + 1;
 				uint next_in_col = current_id + precision;
@@ -567,7 +567,7 @@ namespace gloops {
 
 		Vertices vertices(static_cast<size_t>(precision)* precision);
 		Normals normals(vertices.size());
-		Triangles triangles(2u * static_cast<size_t>(precision - 1)* precision);
+		Triangles triangles(2u * static_cast<size_t>(precision - 1) * (precision - 1));
 		UVs uvs(vertices.size());
 
 		float frac_p = 1.0f / (float)(precision - 1.0f);
@@ -588,7 +588,7 @@ namespace gloops {
 
 		uint tri_id = 0;
 		for (uint t = 0; t < precision - 1; ++t) {
-			for (uint p = 0; p < precision; ++p, tri_id += 2) {
+			for (uint p = 0; p < precision - 1; ++p, tri_id += 2) {
 				uint current_id = p + precision * t;
 				uint next_in_row = current_id + 1;
 				uint next_in_col = current_id + precision;

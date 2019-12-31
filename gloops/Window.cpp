@@ -566,7 +566,7 @@ namespace gloops {
 		v2i render_size = renderingSize.cwiseMax(v2i(1, 1));
 
 		TexParams params = TexParams::RGBA;
-		params.setMipmapStatus(false).setWrapS(GL_CLAMP_TO_EDGE).setWrapT(GL_CLAMP_TO_EDGE);	
+		params.disableMipmap().setWrapS(GL_CLAMP_TO_EDGE).setWrapT(GL_CLAMP_TO_EDGE);	
 		framebuffer = Framebuffer(render_size[0], render_size[1], 4, params);
 		
 		//std::cout << "subwin rsize : " << render_size.transpose() << std::endl;

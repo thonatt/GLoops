@@ -30,6 +30,7 @@ namespace gloops {
 	using Vec = Eigen::Matrix<T, N, 1>;
 
 	using v3b = Vec<uchar, 3>;
+	using v4b = Vec<uchar, 4>;
 
 	using v2i = Vec<int, 2>;
 	using v3i = Vec<int, 3>;

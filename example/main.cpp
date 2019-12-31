@@ -32,23 +32,28 @@ SubWindow checker_subwin()
 		{ Mode::PERLIN, { perlinTex, "Perlin noise"}},
 	};
 
-	static Mode currentMode = Mode::CHECKERS;
+	static Mode currentMode = Mode::PERLIN;
 
 	auto sub = SubWindow("Texture viewer",
 		v2i(600, 600),
 		[&]
 	{
-		//if (ImGui::Checkbox("linear interpolation", &linear)) {
-		//	filter = linear ? GL_LINEAR : GL_NEAREST;
-		//}
-
+		int mode_id = 0;
 		for (const auto& mode : modes) {
 			if (ImGui::RadioButton(mode.second.name.c_str(), currentMode == mode.first )) {
 				currentMode = mode.first;
 			}
+			if (mode_id != ((int)modes.size() - 1)) {
+				ImGui::SameLine();
+			}
+			++mode_id;
 		}
 
+		std::stringstream s;
+		s << "texture zoom : " << (doReadback ? "" : " cursor out of viewport !");
+		ImGui::Text(s.str());
 		if (doReadback) {
+			ImGui::SameLine();
 			ImGui::Image(zoom.getId(), { 100,100 }, { 0,1 }, { 1,0 });
 		}
 	},
@@ -68,9 +73,10 @@ SubWindow checker_subwin()
 			const int r = 10;
 			v2i xy = v2i(std::clamp(coords.x() - r, 0, dst.w() - 1), std::clamp(coords.y() - r, 0, dst.h() - 1));
 
-			Image4b tmp;
+			Image4b tmp(2 * r + 1, 2 * r + 1);
+			tmp.setTo(v4b(0, 0, 0, 0));
 			dst.readBack(tmp, 2 * r + 1, 2 * r + 1, xy[0], xy[1]);
-			zoom.update(tmp, DefaultTexParams<Image4b>().setMipmapStatus(false).setMagFilter(GL_NEAREST));
+			zoom.update(tmp, DefaultTexParams<Image4b>().disableMipmap().setMagFilter(GL_NEAREST));
 		}
 
 	});
@@ -114,8 +120,10 @@ SubWindow mesh_viewer_subwin()
 		};
 
 		colPicker("sphere color : ", &color[0]);
+		ImGui::SameLine();
 		colPicker("clear color", &mesh_viewer.clearColor[0], ImGuiColorEditFlags_NoAlpha);
 		colPicker("background color", &mesh_viewer.getRenderComponent().backgroundColor[0], ImGuiColorEditFlags_NoAlpha);
+		ImGui::SameLine();
 		colPicker("gui background color", &mesh_viewer.getGuiComponent().backgroundColor[0], ImGuiColorEditFlags_NoAlpha);
 
 		ImGui::Separator();
@@ -177,10 +185,13 @@ SubWindow mesh_viewer_subwin()
 
 SubWindow mesh_modes_subwin()
 {
-	static MeshGL torusA = Mesh::getTorus(3, 1), torusB = Mesh::getTorus(3, 1).setTranslation(3 * v3f::UnitY())
-		.setRotation(Eigen::AngleAxis<float>(pi<float>() / 2, v3f::UnitY()));
+	static MeshGL meshA = Mesh::getTorus(3, 1),
+		meshB = Mesh::getTorus(3, 1).setTranslation(3 * v3f::UnitY())
+		.setRotation(Eigen::AngleAxis<float>(pi<float>() / 2, v3f::UnitY())),
+		meshC = Mesh::getSphere().setScaling(3).setTranslation(-8 * v3f(0, 1, 0));
 
-	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(torusA, torusB);
+	static Texture tex(perlinNoise(1024, 1024, 5));
+	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC);
 
 	static ShaderCollection shaders;
 
@@ -207,35 +218,38 @@ SubWindow mesh_modes_subwin()
 	);
 	uv_shader.addUniforms(shaders.mvp);
 
-	enum class Mode { POINT, LINE, TRIANGLE, UVS };
+	enum class Mode { POINT, LINE, PHONG, UVS, TEXTURED };
 	struct ModeMesh {
 		Mode mode;
 		MeshGL mesh;
+		v4f color = v4f(1, 0, 0, 1);
 	};
 
 	static std::map<uint, ModeMesh> meshes =
 	{
-		{ 0, { Mode::UVS, torusA } },
-		{ 1, { Mode::UVS, torusB } },
+		{ 0, { Mode::UVS, meshA } },
+		{ 1, { Mode::UVS, meshB } },
+		{ 2, { Mode::UVS, meshC } }
 	};
 
-	static const std::map<Mode, std::pair<GLenum, std::string>> modes = {
-		{ Mode::POINT, { GL_POINT, "points"} },
-		{ Mode::LINE, { GL_LINE, "lines" } },
-		{ Mode::TRIANGLE, { GL_FILL, "fill" } },
-		{ Mode::UVS, { GL_FILL, "uvs" } }
+	static const std::map<Mode, std::string> modes = {
+		{ Mode::POINT, "points" },
+		{ Mode::LINE, "lines" },
+		{ Mode::PHONG, "phong" },
+		{ Mode::UVS, "uvs" },
+		{ Mode::TEXTURED, "textured" }
 	};
 
 	return SubWindow("Render modes", v2i(800, 600),
 		[&]
 	{
 		for (auto& mesh : meshes) {
-			for (auto mode_it = modes.begin(); mode_it != modes.end(); ++mode_it) {
-				if (ImGui::RadioButton((mode_it->second.second + "##" + std::to_string(mesh.first)).c_str(), mesh.second.mode == mode_it->first)) {
-					mesh.second.mode = mode_it->first;
-					mesh.second.mesh.mode = mode_it->second.first;
+			int mode_id = 0;
+			for (const auto& mode : modes) {
+				if (ImGui::RadioButton((mode.second + "##" + std::to_string(mesh.first)).c_str(), mesh.second.mode == mode.first)) {
+					mesh.second.mode = mode.first;
 				}
-				if (mode_it != (--modes.end())) {
+				if (mode_id != ((int)modes.size() - 1)) {
 					ImGui::SameLine();
 				}			
 			}
@@ -249,17 +263,45 @@ SubWindow mesh_modes_subwin()
 		[&](Framebuffer& dst)
 	{
 		dst.bindDraw();
-		for (const auto& mesh : meshes) {
-			const MeshGL& m = mesh.second.mesh;
-			if (mesh.second.mode == Mode::UVS) {			
-				shaders.mvp = tb.getCamera().viewProj() * m.model();
-				uv_shader.use();
-				m.draw();
-			} else {
-				shaders.renderPhongMesh(tb.getCamera(), m);
+
+		Cameraf eye = tb.getCamera();
+		for (auto& m : meshes) {
+
+			MeshGL& mesh = m.second.mesh;
+			switch (m.second.mode)
+			{
+			case Mode::PHONG: {
+				mesh.mode = GL_FILL;
+				shaders.renderPhongMesh(eye, mesh);
+				break;
 			}
+			case Mode::UVS: {
+				mesh.mode = GL_FILL;
+				shaders.mvp = tb.getCamera().viewProj() * mesh.model();
+				uv_shader.use();
+				mesh.draw();
+				break;
+			}
+			case Mode::TEXTURED: {
+				mesh.mode = GL_FILL;
+				shaders.renderTexturedMesh(eye, mesh, tex);
+				break;
+			}
+			case Mode::POINT: {
+				mesh.mode = GL_POINT;
+				shaders.renderBasicMesh(eye, mesh, m.second.color);
+				break;
+			}
+			case Mode::LINE: {
+				mesh.mode = GL_LINE;
+				shaders.renderBasicMesh(eye, mesh, m.second.color);
+				break;
+			}
+			default: {}
+			}
+
+			shaders.renderColoredMesh(eye, MeshGL::getAxis());
 		}
-		
 	});
 }
 
@@ -293,21 +335,19 @@ SubWindow rayTracingWin()
 	static Cameraf previousCam;
 
 	static Image3f currentSamplesAverage;
-	static float currentNumSamples = 0;
-	static const float maxNumSamples = 64;
 	static Texture tex;
 
 	enum class Mode { COLOR, DIRECT_LIGHT, NORMAL, POSITION, DEPTH };
 	static const std::map<Mode, std::string> modes = {
-		{ Mode::DEPTH, "DEPTH" },
-		{ Mode::POSITION, "POSITION" },
-		{ Mode::NORMAL, "NORMAL" },
-		{ Mode::DIRECT_LIGHT, "DIRECT_LIGHT" },
-		{ Mode::COLOR, "COLOR" }
+		{ Mode::DEPTH, "Depth" },
+		{ Mode::POSITION, "Position" },
+		{ Mode::NORMAL, "Normal" },
+		{ Mode::DIRECT_LIGHT, "Direct" },
+		{ Mode::COLOR, "Color" }
 	};
 	static Mode mode = Mode::COLOR;
 
-	static int numBounces = 2, samplesPerPixel = 1;
+	static int numBounces = 2, maxNumSamples = 8, samplesPerPixel = 1, currentNumSamples = 0;
 	static bool resetRayCasting = true, useMT = false;
 
 	static const int w = 360, h = 240;
@@ -320,7 +360,7 @@ SubWindow rayTracingWin()
 				mode = m.first;
 				resetRayCasting = true;
 			}
-			if ((mode_id % 3) != 2 && mode_id != ((int)modes.size() - 1)) {
+			if (mode_id != ((int)modes.size() - 1)) {
 				ImGui::SameLine();
 			}
 			++mode_id;
@@ -328,14 +368,17 @@ SubWindow rayTracingWin()
 		ImGui::Separator();
 		ImGui::PushItemWidth(150);
 		resetRayCasting |= ImGui::SliderInt("num bounces", &numBounces, 1, 3);
-		resetRayCasting |= ImGui::SliderInt("samples per pixel", &samplesPerPixel, 1, 4);
+		resetRayCasting |= ImGui::SliderInt("samples per pixel per frame", &samplesPerPixel, 1, 4);
+		resetRayCasting |= ImGui::SliderInt("max samples per pixel", &maxNumSamples, 1, 64);
 		ImGui::PopItemWidth();
 
 		resetRayCasting |= ImGui::Checkbox(
 			("use multi-threading, " + std::to_string(std::thread::hardware_concurrency()) + " available cores").c_str(),
 			&useMT
 		);
-		ImGui::Text("current samples per pixels : " + std::to_string((int)currentNumSamples));
+		std::stringstream s;
+		s << "current num samples per pixel : " << currentNumSamples << " / " << maxNumSamples;
+		ImGui::Text(s.str());
 	});
 
 	sub.setUpdateFunction([&](const Input& i) {
@@ -367,7 +410,7 @@ SubWindow rayTracingWin()
 
 		auto rowJob = [&](int i) {
 			for (int j = 0; j < w; ++j) {
-				float numSamples = currentNumSamples;
+				int numSamples = currentNumSamples;
 				
 				for (int s = 0; s < samplesPerPixel; ++s) {
 					RayT<float> ray = cam.getRay(v2f(j, h - 1 - i) + 0.5 * (randomVec<float,2>() + v2f(1, 1)));
@@ -452,33 +495,26 @@ SubWindow rayTracingWin()
 		currentNumSamples += samplesPerPixel;
 		previousCam = cam;
 
+		Image3b img;
 		switch (mode)
 		{
-		case Mode::DEPTH: {
-			auto depth_img = currentSamplesAverage.normalized<uchar, 1>(0, 255, hitMask, 255);
-			tex.update(depth_img);
+		case Mode::COLOR: {
+			img = currentSamplesAverage.convert<uchar>(255, 0);
 			break;
 		}
-		case Mode::POSITION: {
-			auto positions_img = currentSamplesAverage.convert<uchar>(128, 128, hitMask, 255);
-			tex.update(positions_img);
-			break;
-		}		
-		case Mode::NORMAL: {
-			auto normals_img = currentSamplesAverage.convert<uchar>(128, 128, hitMask, 255);
-			tex.update(normals_img);
+		case Mode::DEPTH: {
+			img = currentSamplesAverage.normalized<uchar>(0, 255, hitMask, 255);
 			break;
 		}
 		case Mode::DIRECT_LIGHT: {
-			auto is_light_visible_img = currentSamplesAverage.convert<uchar>(255, 0, hitMask, 50);
-			tex.update(is_light_visible_img);
+			img = currentSamplesAverage.convert<uchar>(255, 0, hitMask, 50);
 			break;
 		}
 		default:
-			auto img = currentSamplesAverage.convert<uchar>(255, 0);
-			tex.update(img);
+			img = currentSamplesAverage.convert<uchar>(128, 128, hitMask, 255);
 		}
 
+		tex.update(img);
 		dst.blitFrom(tex);
 	});
 
@@ -494,11 +530,13 @@ int main(int argc, char** argv)
 	auto win_mesh_modes = mesh_modes_subwin();
 	auto win_raytracing = rayTracingWin();
 
-	auto demoOptions = WindowComponent("demo settings", WindowComponent::Type::GUI, 
+	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::GUI, 
 		[&] (const Window& win) {
-		ImGui::Checkbox("checkers texture", &win_checkers.active());
+		ImGui::Checkbox("texture viewer", &win_checkers.active());
+		ImGui::SameLine();
 		ImGui::Checkbox("mesh viewer", &win_mesh.active());
 		ImGui::Checkbox("mesh modes", &win_mesh_modes.active());
+		ImGui::SameLine();
 		ImGui::Checkbox("ray tracing", &win_raytracing.active());
 	});
 

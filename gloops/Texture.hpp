@@ -321,7 +321,8 @@ namespace gloops {
 		TexParams& setType(GLenum t);
 
 		TexParams& setMagFilter(GLint v);
-		TexParams& setMipmapStatus(bool enabled);
+		TexParams& disableMipmap();
+		TexParams& enableMipmap();
 
 		TexParams& setWrapS(GLint parameter);
 		TexParams& setWrapT(GLint parameter);

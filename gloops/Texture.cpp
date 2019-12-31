@@ -35,6 +35,8 @@ namespace gloops {
 
 	Image3b perlinNoise(int w, int h, int size)
 	{
+		size = std::max(size, 1);
+
 		Image<float, 2> grads(w / size + 1, h / size + 1);
 		for (int i = 0; i < grads.h(); ++i) {
 			for (int j = 0; j < grads.w(); ++j) {
@@ -44,7 +46,7 @@ namespace gloops {
 
 		Image1f out(w, h);
 
-		const float ratio = 1 / (float)std::max(size, 1);
+		const float ratio = 1 / (float)size;
 		for (int i = 0; i < h; ++i) {
 			int iy = i / size;
 			float fy = i * ratio;
@@ -599,10 +601,15 @@ namespace gloops {
 		return *this;
 	}
 
-	TexParams& TexParams::setMipmapStatus(bool enabled)
+	TexParams& TexParams::disableMipmap()
 	{
-		useMipmap = enabled;
-		dirtyMipmap = true;
+		useMipmap = false;
+		return *this;
+	}
+
+	TexParams& TexParams::enableMipmap()
+	{
+		useMipmap = true;
 		return *this;
 	}
 
