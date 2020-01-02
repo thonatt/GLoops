@@ -175,7 +175,7 @@ namespace gloops {
 	{
 		mvp = eye.viewProj() * mesh.model();
 		model = mesh.model();
-		rotation = mesh.rotation();
+		rotation = mesh.transform().rotation();
 		cam_pos = eye.position();
 		light_pos = light_position;
 		shader_map[Name::PHONG].use();

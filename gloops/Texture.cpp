@@ -57,19 +57,19 @@ namespace gloops {
 				float fx = j * ratio;
 				float dx = fx - (float)ix;
 
-				float vx0 = lerp(
+				float vx0 = smoothstep3(
 					grads.pixel(ix + 0, iy + 0).dot(v2f(fx - (ix + 0), fy - (iy + 0))),
 					grads.pixel(ix + 1, iy + 0).dot(v2f(fx - (ix + 1), fy - (iy + 0))),
 					dx
 				);
 
-				float vx1 = lerp(
+				float vx1 = smoothstep3(
 					grads.pixel(ix + 0, iy + 1).dot(v2f(fx - (ix + 0), fy - (iy + 1))),
 					grads.pixel(ix + 1, iy + 1).dot(v2f(fx - (ix + 1), fy - (iy + 1))),
 					dx
 				);
 			
-				out.at(j, i) = lerp(vx0, vx1, dy);
+				out.at(j, i) = smoothstep3(vx0, vx1, dy);
 			}
 		}
 

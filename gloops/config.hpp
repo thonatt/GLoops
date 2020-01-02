@@ -197,7 +197,8 @@ namespace gloops {
 	}
 
 	template<typename T, int N>
-	Vec<T, N> randomVec() {
+	Vec<T, N> randomVec() 
+	{
 		static std::random_device device;
 		static std::mt19937 generator(device());
 		static std::uniform_real_distribution<T> distribution(-1, 1);
@@ -210,7 +211,8 @@ namespace gloops {
 	}
 
 	template<typename T, int N>
-	Vec<T, N> randomUnit() {
+	Vec<T, N> randomUnit()
+	{
 		Vec<T, N> out;
 		do {
 			out = randomVec<T, N>();
@@ -219,11 +221,26 @@ namespace gloops {
 	}
 
 	template<typename T, typename U>
-	auto lerp(const T& a1, const T& a2, U u) {
+	auto lerp(const T& a1, const T& a2, U u) 
+	{
 		return a1 + u * (a2 - a1);
 	};
+	
+	template<typename T, typename U>
+	auto smoothstep3(const T& a1, const T& a2, U x)
+	{
+		U u = x * x * (T(3) - T(2) * x);
+		return a1 * (T(1) - u) + a2 * u;
+	}
 
-	template<typename U = double>
+	template<typename T, typename U>
+	auto smoothstep5(const T& a1, const T& a2, U x)
+	{
+		U u = x* x* x* (x * (x * U(6) - U(15)) + U(10));
+		return a1 * (T(1) - u) + a2 * u;
+	}
+	
+	template<typename U = float>
 	constexpr U pi() {
 		return static_cast<U>(3.14159265358979323846);
 	}

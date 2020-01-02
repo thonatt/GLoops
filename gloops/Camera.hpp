@@ -318,11 +318,14 @@ namespace gloops {
 
 		RaycastingCamera() : Cam() {}
 
-
 		RaycastingCamera(const Cam& cam, int w, int h)
 			: Cam(cam), _w(w), _h(h) 
 		{
 			setupDerivatives();
+		}
+
+		RaycastingCamera(const Cam& cam, const v2i& res)
+			: RaycastingCamera(cam, res[0], res[1]) {
 		}
 
 		RaycastingCamera(const Quat& rotation, const v3& position, T focal_pix, int w, int h, 
@@ -354,10 +357,6 @@ namespace gloops {
 			setPerspective(fovy, aspect_focals, near, far);
 			setupDerivatives();
 		}
-
-		RaycastingCamera(const Cam& cam, const v2i& size)
-			: RaycastingCamera(cam, size[0], size[1]) { }
-
 
 		v3 rayDirNotNormalized(const v2& pix) const {
 			return pix[0] * dx + pix[1] * dy + offset;
@@ -619,6 +618,11 @@ namespace gloops {
 		{
 			center = pos;
 			dirty = true;
+		}
+
+		const Raycaster& getRaycaster() const
+		{
+			return raycaster;
 		}
 
 	protected:

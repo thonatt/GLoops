@@ -582,15 +582,6 @@ namespace gloops {
 
 			menuBar();
 
-			if (!viewport().checkNan()) {
-				std::cout << "vp nan" << std::endl;
-			}
-			if (!renderComponent->checkNan()) {
-				std::cout << "rendercomp nan" << std::endl;
-			}
-			if (!guiComponent->checkNan()) {
-				std::cout << "guicomp nan" << std::endl;
-			}
 			//std::cout << win_name << " rcom " << &renderComponent << std::endl;
 
 			v2f offset, size;

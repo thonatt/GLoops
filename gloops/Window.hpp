@@ -148,6 +148,8 @@ namespace gloops {
 			const RenderingFunc& renderFunc = {}
 		);
 
+		SubWindow operator=(const SubWindow&) = delete;
+
 		void setGuiFunction(const GuiFunc& guiFunction);
 		void setUpdateFunction(const UpdateFunc& upFunc);
 		void setRenderingFunction(const RenderingFunc& renderFunc);

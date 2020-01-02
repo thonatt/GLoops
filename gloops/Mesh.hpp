@@ -4,8 +4,41 @@
 #include <vector>
 #include <map>
 #include <any>
+#include <list>
 
 namespace gloops {
+
+	class Transform4 {
+
+	public:
+
+		const m4f& model() const;
+
+		m3f rotation() const;
+
+		//returns (phi, theta, psi) such as R = R_z(phi) R_y(theta) R_x(psi)
+		v3f eulerAngles() const;
+
+		void setEulerAngles(const v3f& angles);
+
+		const v3f& scaling() const;
+		const v3f& translation() const;
+
+		void setTranslation(const v3f& translation);
+		void setRotation(const Qf& rotation);
+		void setRotation(const Eigen::AngleAxisf& aa);
+		void setScaling(const v3f& scaling);
+		void setScaling(float s);
+
+		bool dirty() const;
+
+	private:
+		v3f _translation = { 0,0,0 }, _scaling = { 1,1,1 };
+		Qf _rotation = Qf::Identity();
+		mutable m4f _model;
+
+		mutable bool dirtyModel = true;
+	};
 
 	class Mesh {
 	public:
@@ -27,6 +60,8 @@ namespace gloops {
 		const UVs& getUVs() const;
 		const Colors& getColors() const;
 
+		const m4f& model() const;
+
 		virtual void setTriangles(const Triangles& tris);
 		void setVertices(const Vertices& tris);
 		void setUVs(const UVs& tris);
@@ -39,35 +74,55 @@ namespace gloops {
 
 		void computeVertexNormalsFromVertices();
 
-		virtual const Box& getBoundingBox() const;
+		const Box& getBoundingBox() const;
+
+		const Transform4& transform() const;
 
 		operator bool() const;
 
 		Mesh& setTranslation(const v3f& translation);
 		Mesh& setRotation(const Qf& rotation);
 		Mesh& setRotation(const Eigen::AngleAxisf& aa);
+		Mesh& setRotation(const v3f& eulerAngles);
+
 		Mesh& setScaling(const v3f& scaling);
 		Mesh& setScaling(float s);
-
-		const m4f& model() const;
-		m3f rotation() const;
-		const Qf& quat() const;
-		const v3f& scaling() const;
-		const v3f& translation() const;
 
 		static Mesh getSphere(uint precision = 50);
 		static Mesh getTorus(float outerRadius, float innerRadius, uint precision = 50);
 		static Mesh getCube(const Box& box = Box(v3f(-1, -1, -1), v3f(1, 1, 1)));
 		static Mesh getCube(const v3f& center, const v3f& halfDiag);
 
+		template<typename T>
+		void setCPUattribute(const std::string& name, const std::vector<T>& data);
+
+		template<typename T>
+		const std::vector<T>& getAttribute(const std::string& name) const;
+
+		template<typename F>
+		void addModelCallback(F&& f) const;
+
+		template<typename F>
+		void addGeometryCallback(F&& f) const;
+
 	protected:
 
 		mutable Box box;
-		mutable bool dirtyBox = true, dirtyModel = true;
+		mutable bool dirtyBox = true;
 
-		v3f _translation = { 0,0,0 }, _scaling = { 1,1,1 };
-		Qf _rotation = Qf::Identity();
-		mutable m4f _model;
+		void invalidateModel();
+		void invalidateGeometry();
+		
+		using CB = std::function<bool(void)>;
+		mutable std::shared_ptr<std::list<CB>> modelCallbacks, geometryCallbacks;
+
+		//v3f _translation = { 0,0,0 }, _scaling = { 1,1,1 };
+		//Qf _rotation = Qf::Identity();
+		//mutable m4f _model;
+
+		std::shared_ptr<Transform4> _transform;
+
+		std::shared_ptr<std::map<std::string, std::any>> custom_attributes;
 
 		std::shared_ptr<Triangles> triangles;
 		std::shared_ptr<Vertices> vertices;
@@ -144,9 +199,9 @@ namespace gloops {
 		void setColors(const Colors& colors, GLuint location = ColorDefaultLocation);
 
 		template<typename T>
-		void setAttribute(const std::vector<T>& data, GLuint location);
+		void setGLattribute(const std::string& name, const std::vector<T>& data, GLuint location);
 
-		void modifyAttributeLocation(GLuint currentLocation, GLuint newLocation);
+		//void modifyAttributeLocation(GLuint currentLocation, GLuint newLocation);
 
 		virtual bool load(const std::string& path) override;
 
@@ -160,9 +215,7 @@ namespace gloops {
 		bool backface_culling = true;
 		bool depth_test = true;
 
-		const std::map<GLuint, VertexAttribute>& getAttributes() const;
-
-		virtual const Box& getBoundingBox() const override;
+		const std::map<std::string, VertexAttribute>& getAttributes() const;
 
 		static MeshGL getCubeLines(const Box& box);
 		static MeshGL getAxis();
@@ -174,8 +227,8 @@ namespace gloops {
 		void updateBuffers() const;
 		void updateLocations() const;
 
-		std::map<GLuint, VertexAttribute> attributes_mapping;
-		std::shared_ptr<std::map<GLuint, std::any>> custom_attributes;
+		std::map<std::string, VertexAttribute> attributes_mapping;
+		//std::shared_ptr<std::map<GLuint, std::any>> custom_attributes;
 
 		GLptr vao, triangleBuffer, vertexBuffer;
 		GLsizei numElements = 0;
@@ -183,12 +236,36 @@ namespace gloops {
 	};
 
 	template<typename T>
-	inline void MeshGL::setAttribute(const std::vector<T>& data, GLuint location)
+	inline void Mesh::setCPUattribute(const std::string& name, const std::vector<T>& data)
 	{
-		custom_attributes[location] = std::make_any<std::vector<T>>(data);
+		(*custom_attributes)[name] = std::make_any<std::vector<T>>(data);
+	}
 
-		attributes_mapping[location] = VertexAttribute(
-			std::any_cast<const std::vector<T>&>(custom_attributes.at(location)), location
+	template<typename T>
+	inline const std::vector<T>& Mesh::getAttribute(const std::string& name) const
+	{
+		return std::any_cast<const std::vector<T>&>(custom_attributes->at(name));
+	}
+
+	template<typename F>
+	inline void Mesh::addModelCallback(F&& f) const
+	{
+		modelCallbacks->push_back(std::forward<F>(f));
+	}
+
+	template<typename F>
+	inline void Mesh::addGeometryCallback(F&& f) const
+	{
+		geometryCallbacks.push_back(std::forward<F>(f));
+	}
+
+	template<typename T>
+	inline void MeshGL::setGLattribute(const std::string& name, const std::vector<T>& data, GLuint location)
+	{
+		Mesh::setCPUattribute(name, data);
+
+		attributes_mapping[name] = VertexAttribute(
+			std::any_cast<const std::vector<T>&>(custom_attributes.at(name)), location
 		);
 
 		if (numElements == 0) {
@@ -197,5 +274,6 @@ namespace gloops {
 
 		dirtyBuffers = true;
 	}
+
 
 }

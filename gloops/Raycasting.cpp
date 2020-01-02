@@ -10,6 +10,7 @@ namespace gloops {
 		geomId = hit.geomID;
 		if (successful()) {
 			triId = hit.primID;
+			instId = hit.instID[0];
 			dist = rayHit.ray.tfar;
 			normal = v3f(hit.Ng_x, hit.Ng_y, hit.Ng_z).normalized();
 			coords = v3f(hit.u, hit.v, std::clamp(1.0f - hit.u - hit.v, 0.0f, 1.0f));
@@ -29,6 +30,11 @@ namespace gloops {
 	uint Hit::geometryId() const
 	{
 		return geomId;
+	}
+
+	uint Hit::instanceId() const
+	{
+		return instId;
 	}
 
 	float Hit::distance() const
@@ -53,6 +59,7 @@ namespace gloops {
 		checkDevice();
 
 		scene = ScenePtr(rtcNewScene(device.get()), rtcReleaseScene);
+		sceneReady = std::make_shared<bool>(false);
 
 		context = ContextPtr(new RTCIntersectContext());
 		context->flags = RTC_INTERSECT_CONTEXT_FLAG_COHERENT;
@@ -60,8 +67,24 @@ namespace gloops {
 
 	}
 
-	void Raycaster::addMeshInternal(const Mesh& mesh)
+	Raycaster& Raycaster::operator=(const Raycaster& other)
 	{
+		scene = other.scene;
+		context = other.context;
+		meshes = other.meshes;
+		sceneReady = other.sceneReady;
+
+		for (const auto& mesh : meshes) {
+			setupMeshCallbacks(mesh.second.mesh);
+		}
+
+		return *this;
+	}
+
+	void Raycaster::addMeshInternal(const Mesh & mesh)
+	{
+		ScenePtr localScene = ScenePtr(rtcNewScene(device.get()), rtcReleaseScene);
+
 		GeometryPtr geometry = GeometryPtr(rtcNewGeometry(
 			device.get(), RTCGeometryType::RTC_GEOMETRY_TYPE_TRIANGLE), rtcReleaseGeometry);
 
@@ -80,13 +103,33 @@ namespace gloops {
 		Vertice* dst_verts = reinterpret_cast<Vertice*>(rtcSetNewGeometryBuffer(
 			geometry.get(), RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(Vertice), verts.size()));
 		for (uint i = 0; i < verts.size(); ++i, ++dst_verts) {
-			*dst_verts = applyTransformationMatrix(mesh.model(), verts[i]);
+			*dst_verts = verts[i]; //applyTransformationMatrix(mesh.model(), verts[i]);
 		}
-
 		rtcCommitGeometry(geometry.get());
-		meshes[rtcAttachGeometry(scene.get(), geometry.get())] = mesh;
 
-		sceneReady = false;
+		rtcAttachGeometry(localScene.get(), geometry.get());
+		rtcCommitScene(localScene.get());
+
+		GeometryPtr instance = GeometryPtr(rtcNewGeometry(
+			device.get(), RTCGeometryType::RTC_GEOMETRY_TYPE_INSTANCE), rtcReleaseGeometry);
+
+		rtcSetGeometryInstancedScene(instance.get(), localScene.get());
+		rtcSetGeometryTimeStepCount(instance.get(), 1);
+
+		uint instance_id = rtcAttachGeometry(scene.get(), instance.get());
+
+		meshes[instance_id] = { mesh, instance };
+
+		setupMeshCallbacks(mesh);
+		
+		*sceneReady = false;
+	}
+
+	void Raycaster::setupMeshCallbacks(const Mesh& mesh)
+	{
+		mesh.addModelCallback([&] { 
+			return sceneReady && !(*sceneReady = false);
+		});
 	}
 
 	void Raycaster::errorCallback(void* userPtr, RTCError code, const char* str)
@@ -109,9 +152,15 @@ namespace gloops {
 
 	void Raycaster::checkScene() const
 	{
-		if (!sceneReady) {
+		if (!(*sceneReady)) {
+			for (const auto& mesh : meshes) {
+				const auto& m = mesh.second;
+				rtcSetGeometryTransform(m.instance.get(), 0, RTCFormat::RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, m.mesh.transform().model().data());
+				rtcCommitGeometry(m.instance.get());
+			}
+
 			rtcCommitScene(scene.get());
-			sceneReady = true;
+			*sceneReady = true;
 		}
 	}
 
@@ -123,7 +172,7 @@ namespace gloops {
 		}
 	}
 
-	bool Raycaster::visible(const v3f& ptA, const v3f& ptB)
+	bool Raycaster::visible(const v3f& ptA, const v3f& ptB) const
 	{
 		checkScene();
 		v3f seg = (ptB - ptA);
@@ -132,7 +181,7 @@ namespace gloops {
 		return !hit.successful() || (hit.distance() > dist * 0.999f);
 	}
 
-	bool Raycaster::visible(const v3f& ptA, const v3f& ptB, v3f& dir, float& dist)
+	bool Raycaster::visible(const v3f& ptA, const v3f& ptB, v3f& dir, float& dist) const
 	{
 		checkScene();
 		v3f seg = (ptB - ptA);

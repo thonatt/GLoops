@@ -62,6 +62,8 @@ namespace gloops {
 
 		uint triangleId() const;
 		uint geometryId() const;
+		uint instanceId() const;
+
 		float distance() const;
 
 		const v3f& getNormal() const;
@@ -73,6 +75,7 @@ namespace gloops {
 		float dist = -1;
 		uint geomId = RTC_INVALID_GEOMETRY_ID;
 		uint triId = -1;
+		uint instId = -1;
 	};
 
 	class Raycaster {
@@ -86,7 +89,13 @@ namespace gloops {
 		using BufferPtr = std::shared_ptr<RTCBufferTy>;
 		using ContextPtr = std::shared_ptr<RTCIntersectContext>;
 
+		struct MeshRaycastingData {
+			Mesh mesh;
+			GeometryPtr instance;
+		};
+
 		Raycaster();
+		Raycaster& operator=(const Raycaster& other);
 
 		Hit intersect(const Ray& ray, float near = 0.0f, float far = std::numeric_limits<float>::infinity()) const;
 
@@ -101,11 +110,11 @@ namespace gloops {
 		template<typename ...Meshes, typename Mesh> 
 		void addMesh(const Mesh& mesh, const Meshes& ...meshes);
 	
-		template<typename F>
-		auto interpolate(const Hit& hit, F&& meshMember );
+		template<typename F, typename ... Args>
+		auto interpolate(const Hit& hit, F&& meshMember, Args&& ... args) const;
 
-		bool visible(const v3f& ptA, const v3f& ptB);
-		bool visible(const v3f& ptA, const v3f& ptB, v3f& dir, float& dist);
+		bool visible(const v3f& ptA, const v3f& ptB) const;
+		bool visible(const v3f& ptA, const v3f& ptB, v3f& dir, float& dist) const;
 
 		void checkScene() const;
 
@@ -124,11 +133,13 @@ namespace gloops {
 		void addMeshInternal(const Mesh& mesh);
 		void addMesh(){}
 
+		void setupMeshCallbacks(const Mesh& mesh);
+
 		ScenePtr scene;
 		ContextPtr context;
-		std::map<size_t, Mesh> meshes;
+		std::map<size_t, MeshRaycastingData> meshes;
 
-		mutable bool sceneReady = false;
+		std::shared_ptr<bool> sceneReady;
 	};
 
 	template<uint N>
@@ -190,13 +201,13 @@ namespace gloops {
 		addMesh(meshes...);
 	}
 
-	template<typename F>
-	inline auto Raycaster::interpolate(const Hit& hit, F&& meshMember)
+	template<typename F, typename ... Args>
+	inline auto Raycaster::interpolate(const Hit& hit, F&& meshMember, Args&& ... args) const
 	{
 		const v3f& uvs = hit.getCoords(); 
-		const Mesh& mesh = meshes[hit.geometryId()];
+		const Mesh& mesh = meshes.at(hit.instanceId()).mesh;
 		const Mesh::Tri& tri = mesh.getTriangles()[hit.triangleId()];
-		const auto& data = (mesh.*meshMember)();
+		const auto& data = (mesh.*meshMember)(std::forward<Args>(args)...);
 		return uvs[0] * data[tri[0]] + uvs[1] * data[tri[1]] + uvs[2] * data[tri[1]];
 	}
 }

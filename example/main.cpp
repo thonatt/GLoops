@@ -186,12 +186,13 @@ SubWindow mesh_viewer_subwin()
 SubWindow mesh_modes_subwin()
 {
 	static MeshGL meshA = Mesh::getTorus(3, 1),
-		meshB = Mesh::getTorus(3, 1).setTranslation(3 * v3f::UnitY())
-		.setRotation(Eigen::AngleAxis<float>(pi<float>() / 2, v3f::UnitY())),
-		meshC = Mesh::getSphere().setScaling(3).setTranslation(-8 * v3f(0, 1, 0));
+		meshB = Mesh::getTorus(3, 1).setTranslation(3 * v3f::UnitY()).setRotation(v3f(0, pi<float>() / 2, 0)),
+		meshC = Mesh::getSphere().setScaling(3).setTranslation(-8 * v3f(0, 1, 0)),
+		meshD = Mesh::getCube().setScaling(2).setTranslation(v3f(-5, -5, 5)).setRotation(v3f(1, 1, 1));
 
 	static Texture tex(perlinNoise(1024, 1024, 5));
-	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC);
+	
+	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC, meshD);
 
 	static ShaderCollection shaders;
 
@@ -223,14 +224,22 @@ SubWindow mesh_modes_subwin()
 		Mode mode;
 		MeshGL mesh;
 		v4f color = v4f(1, 0, 0, 1);
+		bool showBoundingBox = true;
 	};
 
-	static std::map<uint, ModeMesh> meshes =
+	static std::map<int, ModeMesh> meshes =
 	{
 		{ 0, { Mode::UVS, meshA } },
 		{ 1, { Mode::UVS, meshB } },
-		{ 2, { Mode::UVS, meshC } }
+		{ 2, { Mode::UVS, meshC } },
+		{ 3, { Mode::PHONG, meshD } }
 	};
+
+	static int selectedMesh = -1;
+
+	for (auto& m : meshes) {
+		m.second.mesh.setCPUattribute("id", std::vector<int>(m.second.mesh.getVertices().size(), m.first));
+	}
 
 	static const std::map<Mode, std::string> modes = {
 		{ Mode::POINT, "points" },
@@ -240,25 +249,56 @@ SubWindow mesh_modes_subwin()
 		{ Mode::TEXTURED, "textured" }
 	};
 
-	return SubWindow("Render modes", v2i(800, 600),
+	static Hit hit;
+
+	auto sub = SubWindow("Render modes", v2i(800, 600),
 		[&]
 	{
-		for (auto& mesh : meshes) {
-			int mode_id = 0;
+
+		if (selectedMesh < 0) {
+			ImGui::Text("no mesh selected");
+		} else {
+			auto& mesh = meshes.at(selectedMesh);
 			for (const auto& mode : modes) {
-				if (ImGui::RadioButton((mode.second + "##" + std::to_string(mesh.first)).c_str(), mesh.second.mode == mode.first)) {
-					mesh.second.mode = mode.first;
+				if (ImGui::RadioButton((mode.second + "##" + std::to_string(selectedMesh)).c_str(), mesh.mode == mode.first)) {
+					mesh.mode = mode.first;
 				}
-				if (mode_id != ((int)modes.size() - 1)) {
-					ImGui::SameLine();
-				}			
+				ImGui::SameLine();
 			}
-			ImGui::Separator();
+			ImGui::Checkbox(("bbox##" + std::to_string(selectedMesh)).c_str(), &mesh.showBoundingBox);
+
+			static v3f pos, rot;
+			pos = mesh.mesh.transform().translation();
+			if (ImGui::SliderFloat3("translation", pos.data(), -5, 5)) {
+				mesh.mesh.setTranslation(pos);
+			}
+			rot = mesh.mesh.transform().eulerAngles();
+			if (ImGui::SliderFloat3("rotation", rot.data(), 0, 2.0f*pi<float>())) {
+				mesh.mesh.setRotation(rot);
+			}
+			static float scale;
+			scale = mesh.mesh.transform().scaling()[0];
+			if (ImGui::SliderFloat("scale", &scale, 0, 5)) {
+				mesh.mesh.setScaling(scale);
+			}
 		}
 	},
 		[&](const Input& i)
 	{
 		tb.update(i);
+		RaycastingCameraf eye(tb.getCamera(), i.viewport().diagonal().template cast<int>());
+		hit = tb.getRaycaster().intersect(eye.getRay(i.mousePosition<float>()));
+
+		if (hit.successful()) {
+			ImGui::BeginTooltip();
+			ImGui::Text("Click to select : " + std::to_string(hit.instanceId()));
+			ImGui::EndTooltip();
+
+			if (i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
+				int id = (int)tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id");
+				selectedMesh = (selectedMesh == id ? -1 : id);
+			}
+		}
 	},
 		[&](Framebuffer& dst)
 	{
@@ -300,9 +340,15 @@ SubWindow mesh_modes_subwin()
 			default: {}
 			}
 
-			shaders.renderColoredMesh(eye, MeshGL::getAxis());
+			if (m.first == selectedMesh) {
+				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v4f(0, 1, 0, 1));
+			} else if (m.second.showBoundingBox) {
+				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v4f(1, 0, 0, 1));
+			}
 		}
 	});
+
+	return sub;
 }
 
 SubWindow rayTracingWin()
@@ -528,7 +574,7 @@ int main(int argc, char** argv)
 	auto win_checkers = checker_subwin();
 	auto win_mesh = mesh_viewer_subwin();
 	auto win_mesh_modes = mesh_modes_subwin();
-	auto win_raytracing = rayTracingWin();
+	//auto win_raytracing = rayTracingWin();
 
 	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::GUI, 
 		[&] (const Window& win) {
@@ -537,7 +583,7 @@ int main(int argc, char** argv)
 		ImGui::Checkbox("mesh viewer", &win_mesh.active());
 		ImGui::Checkbox("mesh modes", &win_mesh_modes.active());
 		ImGui::SameLine();
-		ImGui::Checkbox("ray tracing", &win_raytracing.active());
+		//ImGui::Checkbox("ray tracing", &win_raytracing.active());
 	});
 
 	mainWin.renderingLoop([&]{
@@ -547,7 +593,7 @@ int main(int argc, char** argv)
 		win_checkers.show(mainWin);
 		win_mesh.show(mainWin);
 		win_mesh_modes.show(mainWin);
-		win_raytracing.show(mainWin);
+		//win_raytracing.show(mainWin);
 	});
 
 }

@@ -10,6 +10,78 @@
 
 namespace gloops {
 
+	const m4f& Transform4::model() const
+	{
+		if (dirtyModel) {
+			_model = transformationMatrix(_translation, rotation() , _scaling);
+			dirtyModel = false;
+		}
+		return _model;
+	}
+
+	m3f Transform4::rotation() const
+	{
+		return _rotation.toRotationMatrix();
+	}
+
+	v3f Transform4::eulerAngles() const
+	{
+		return rotation().eulerAngles(0, 1, 2);
+	}
+
+	void Transform4::setEulerAngles(const v3f& angles)
+	{
+		_rotation =
+			Eigen::AngleAxisf(angles[0], v3f::UnitX()) *
+			Eigen::AngleAxisf(angles[1], v3f::UnitY()) *
+			Eigen::AngleAxisf(angles[2], v3f::UnitZ());
+		dirtyModel = true;
+	}
+
+	const v3f& Transform4::scaling() const
+	{
+		return _scaling;
+	}
+
+	const v3f& Transform4::translation() const
+	{
+		return _translation;
+	}
+
+	void Transform4::setTranslation(const v3f& translation)
+	{
+		_translation = translation;
+		dirtyModel = true;
+	}
+
+	void Transform4::setRotation(const Qf& rotation)
+	{
+		_rotation = rotation;
+		dirtyModel = true;
+	}
+
+	void Transform4::setRotation(const Eigen::AngleAxisf& aa)
+	{
+		_rotation = aa;
+		dirtyModel = true;
+	}
+
+	void Transform4::setScaling(const v3f& scaling)
+	{
+		_scaling = scaling;
+		dirtyModel = true;
+	}
+
+	void Transform4::setScaling(float s)
+	{
+		setScaling(v3f(s, s, s));
+	}
+
+	bool Transform4::dirty() const
+	{
+		return dirtyModel;
+	}
+
 	Mesh::Mesh()
 	{
 		triangles = std::make_shared<Triangles>();
@@ -17,6 +89,11 @@ namespace gloops {
 		normals = std::make_shared<Normals>();
 		colors = std::make_shared<Colors>();
 		uvs = std::make_shared<UVs>();
+
+		_transform = std::make_shared<Transform4>();
+		modelCallbacks = std::make_shared<std::list<CB>>();
+		//transformWasChanged = std::make_shared<bool>(true);
+
 	}
 
 	const Mesh::Vertices& Mesh::getVertices() const
@@ -44,16 +121,21 @@ namespace gloops {
 		return *colors;
 	}
 
+	const m4f& Mesh::model() const
+	{
+		return _transform->model();
+	}
+
 	void Mesh::setTriangles(const Triangles& tris)
 	{
 		*triangles = tris;
-		dirtyBox = true;
+		invalidateGeometry();
 	}
 
 	void Mesh::setVertices(const Vertices& verts)
 	{
 		*vertices = verts;
-		dirtyBox = true;
+		invalidateGeometry();
 	}
 
 	void Mesh::setUVs(const UVs& texCoords)
@@ -99,7 +181,7 @@ namespace gloops {
 			[](const GLuint* ptr) { glDeleteBuffers(1, ptr); }
 		);
 
-		custom_attributes = std::make_shared< std::map<GLuint, std::any>>();
+		custom_attributes = std::make_shared< std::map<std::string, std::any>>();
 	}
 
 	MeshGL::MeshGL(const Mesh& mesh) : MeshGL()
@@ -117,9 +199,8 @@ namespace gloops {
 			setColors(mesh.getColors());
 		}
 	
-		setRotation(mesh.quat());
-		setTranslation(mesh.translation());
-		setScaling(mesh.scaling());
+		*_transform = mesh.transform();
+
 	}
 
 	void MeshGL::setTriangles(const Triangles& tris)
@@ -132,7 +213,7 @@ namespace gloops {
 	{
 		Mesh::setVertices(verts);
 		dirtyBuffers = true;
-		attributes_mapping[location] = VertexAttribute(getVertices(), location);
+		attributes_mapping["potision"] = VertexAttribute(getVertices(), location);
 		if (numElements == 0) {
 			numElements = static_cast<GLsizei>(getVertices().size());
 		}
@@ -142,31 +223,31 @@ namespace gloops {
 	{
 		Mesh::setNormals(norms);
 		dirtyBuffers = true;
-		attributes_mapping[location] = VertexAttribute(getNormals(), location);
+		attributes_mapping["normals"] = VertexAttribute(getNormals(), location);
 	}
 
 	void MeshGL::setColors(const Colors& cols, GLuint location)
 	{
 		Mesh::setColors(cols);
 		dirtyBuffers = true;
-		attributes_mapping[location] = VertexAttribute(getColors(), location);
+		attributes_mapping["colors"] = VertexAttribute(getColors(), location);
 	}
 
 	void MeshGL::setUVs(const UVs& texCoords, GLuint location)
 	{
 		Mesh::setUVs(texCoords);
 		dirtyBuffers = true;
-		attributes_mapping[location] = VertexAttribute(getUVs(), location);
+		attributes_mapping["uvs"] = VertexAttribute(getUVs(), location);
 	}
 
-	void MeshGL::modifyAttributeLocation(GLuint currentLocation, GLuint newLocation)
-	{
-		auto attribute = attributes_mapping.find(currentLocation);
-		if (attribute != attributes_mapping.end()) {
-			attributes_mapping[currentLocation].index = newLocation;
-			dirtyLocations = true;
-		}
-	}
+	//void MeshGL::modifyAttributeLocation(GLuint currentLocation, GLuint newLocation)
+	//{
+	//	auto attribute = attributes_mapping.find(currentLocation);
+	//	if (attribute != attributes_mapping.end()) {
+	//		attributes_mapping[currentLocation].index = newLocation;
+	//		dirtyLocations = true;
+	//	}
+	//}
 
 	bool MeshGL::load(const std::string& path)
 	{
@@ -414,14 +495,23 @@ namespace gloops {
 
 	const Mesh::Box& Mesh::getBoundingBox() const
 	{
-		if(dirtyBox){
-			box.setEmpty();
+		if(dirtyBox || _transform->dirty()){
+			Box tmpBox;
 			for (const auto& v : getVertices()) {
-				box.extend(v);
+				tmpBox.extend(v);
+			}
+			box.setEmpty();
+			for (int c = 0; c < 8; ++c) {
+				box.extend(applyTransformationMatrix(model(), tmpBox.corner((Box::CornerType)c)));
 			}
 			dirtyBox = false;
 		}
 		return box;
+	}
+
+	const Transform4& Mesh::transform() const
+	{
+		return *_transform;
 	}
 
 	Mesh::operator bool() const
@@ -429,82 +519,49 @@ namespace gloops {
 		return getVertices().size() > 0;
 	}
 
-	const std::map<GLuint, VertexAttribute>& MeshGL::getAttributes() const
+	const std::map<std::string, VertexAttribute>& MeshGL::getAttributes() const
 	{
 		return attributes_mapping;
 	}
 
-	const MeshGL::Box& MeshGL::getBoundingBox() const
-	{
-		if (dirtyBox) {
-			Box tmpBox = Mesh::getBoundingBox();
-			box.setEmpty();
-			box.extend(applyTransformationMatrix(model(), tmpBox.min()));
-			box.extend(applyTransformationMatrix(model(), tmpBox.max()));
-		}
-		return box;
-	}
-
 	Mesh& Mesh::setTranslation(const v3f& translation)
 	{
-		_translation = translation;
-		dirtyModel = true;
+		_transform->setTranslation(translation);
+		invalidateModel();
 		return *this;
 	}
 
 	Mesh& Mesh::setRotation(const Qf& rotation)
 	{
-		_rotation = rotation;
-		dirtyModel = true;
+		_transform->setRotation(rotation);
+		invalidateModel();
 		return *this;
 	}
 
 	Mesh& Mesh::setRotation(const Eigen::AngleAxisf& aa)
 	{
-		_rotation = aa;
-		dirtyModel = true;
+		_transform->setRotation(aa);
+		invalidateModel();
+		return *this;
+	}
+
+	Mesh& Mesh::setRotation(const v3f& eulerAngles)
+	{
+		_transform->setEulerAngles(eulerAngles);
+		invalidateModel();
 		return *this;
 	}
 
 	Mesh& Mesh::setScaling(const v3f& scaling)
 	{
-		_scaling = scaling;
-		dirtyModel = true;
+		_transform->setScaling(scaling);
+		invalidateModel();
 		return *this;
 	}
 
 	Mesh& Mesh::setScaling(float s)
 	{
 		return setScaling(v3f(s, s, s));
-	}
-
-	const m4f& Mesh::model() const
-	{
-		if (dirtyModel) {
-			_model = transformationMatrix(_translation, _rotation.toRotationMatrix(), _scaling);
-			dirtyModel = false;
-		}
-		return _model;
-	}
-
-	m3f Mesh::rotation() const
-	{
-		return _rotation.toRotationMatrix();
-	}
-
-	const Qf& Mesh::quat() const
-	{
-		return _rotation;
-	}
-
-	const v3f& Mesh::scaling() const
-	{
-		return _scaling;
-	}
-
-	const v3f& Mesh::translation() const
-	{
-		return _translation;
 	}
 
 	size_t MeshGL::size_of_vertex_data() const
@@ -573,7 +630,7 @@ namespace gloops {
 		float frac_p = 1.0f / (float)(precision - 1.0f);
 		float frac_t = 1.0f / ((float)precision - 1.0f);
 		for (size_t t = 0; t < precision; ++t) {
-			const float theta = t * frac_t * 2 * pi<float>();
+			const float theta = (t * frac_t * 2 + 1) * pi<float>();
 			const float cost = std::cos(theta), sint = std::sin(theta);
 			const v2f pos = v2f(R + r * cost, r * sint);
 
@@ -628,9 +685,11 @@ namespace gloops {
 		};
 
 		Mesh::Vertices vertices(4 * 6);
+		Mesh::UVs uvs(4 * 6);
 		for (int f = 0; f < 6; ++f) {
 			for (int v = 0; v < 4; ++v) {
 				vertices[4 * f + v] = box.corner((Box::CornerType)corners[f][v]);
+				uvs[4 * f + v] = v2f(v / 2, v % 2);
 			}
 		}
 		
@@ -638,6 +697,7 @@ namespace gloops {
 		out.setTriangles(tris);
 		out.setVertices(vertices);
 		out.computeVertexNormalsFromVertices();
+		out.setUVs(uvs);
 
 		return out;
 	}
@@ -645,6 +705,24 @@ namespace gloops {
 	Mesh Mesh::getCube(const v3f& center, const v3f& halfDiag)
 	{
 		return getCube(Box(center - halfDiag, center + halfDiag));
+	}
+
+	void Mesh::invalidateModel()
+	{
+		dirtyBox = true;
+		for (auto callback_it = modelCallbacks->begin(); callback_it != modelCallbacks->end(); ++callback_it) {
+			if(!(*callback_it)()){
+				modelCallbacks->erase(callback_it);
+			}
+		}
+	}
+
+	void Mesh::invalidateGeometry()
+	{
+		dirtyBox = true;
+		//for (const auto& callback : *geometryCallbacks) {
+		//	//callback();
+		//}
 	}
 
 	MeshGL MeshGL::getCubeLines(const Box& box)
@@ -694,10 +772,10 @@ namespace gloops {
 	{
 		MeshGL out;
 		out.setVertices(pts);
-		
+
 		Mesh::Triangles tris(pts.size() / 2);
-		for (uint i = 0; i < tris.size(); ++i) {
-			tris[i] = v3u(2 * i, 2 * i, 2 * i + 1);
+		for (uint i = 0, j = 0; i < tris.size(); ++i, j += 2) {
+			tris[i] = v3u(j, j, j + 1);
 		}
 
 		out.setTriangles(tris);
