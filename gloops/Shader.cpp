@@ -161,6 +161,7 @@ namespace gloops {
 		initPhong();
 		initColoredMesh();
 		initTexturedMesh();
+		initNormals();
 	}
 
 	void ShaderCollection::renderBasicMesh(const Cameraf& eye, const MeshGL& mesh, const v4f& _color)
@@ -203,28 +204,31 @@ namespace gloops {
 		mesh.draw();
 	}
 
+	void ShaderCollection::renderNormals(const Cameraf& eye, const MeshGL& mesh, float _size, const v4f& _color)
+	{
+		mvp = eye.viewProj() * mesh.model();
+		color = _color;
+		size = _size;
+		shader_map[Name::NORMALS].use();
+		mesh.draw();
+	}
+
 	void ShaderCollection::initBasic()
 	{
 		ShaderProgram shader;
 		shader.init(
 			R"(
 				#version 420
-
 				layout(location = 0) in vec3 position;
-
 				uniform mat4 mvp;
-
 				void main() {
 					gl_Position = mvp * vec4(position, 1.0);
 				}
 			)",
 			R"(
 				#version 420
-
 				layout(location = 0) out vec4 outColor;
-
 				uniform vec4 color;
-
 				void main(){
 					outColor = vec4(color);
 				}
@@ -363,6 +367,53 @@ namespace gloops {
 		//shader.initFromPaths(shader_folder + "texturedMesh.vert", shader_folder + "texturedMesh.frag");
 		shader.addUniforms(mvp, alpha);
 		shader_map[Name::TEXTURED_MESH] = shader;
+	}
+
+	void ShaderCollection::initNormals()
+	{
+		ShaderProgram shader;
+		shader.init(
+			R"(
+				#version 420
+				layout(location = 0) in vec3 position;
+				void main(){
+					gl_Position = vec4(position,1.0);
+				}
+			)",
+			R"(
+				#version 420
+				layout(location = 0) out vec4 outColor;
+				uniform vec4 color;
+				void main(){
+					outColor = vec4(color);
+				}
+			)",
+			R"(
+				#version 420
+				layout(triangles) in;
+				layout(line_strip, max_vertices = 2) out;
+				uniform mat4 mvp;    
+				uniform float size;
+
+				void main(void) {
+					vec3 a = gl_in[0].gl_Position.xyz;
+					vec3 b = gl_in[1].gl_Position.xyz;
+					vec3 c = gl_in[2].gl_Position.xyz;
+
+					vec3 tri_normal = normalize(cross(b-a,c-b));
+					vec3 tri_center = (a+b+c)/3.0;
+
+					gl_Position = mvp*vec4(tri_center,1.0);
+					EmitVertex();
+					gl_Position = mvp*vec4(tri_center + size*tri_normal, 1.0);
+					EmitVertex();
+					EndPrimitive();
+				}
+			)"
+		);
+
+		shader.addUniforms(mvp, color, size);
+		shader_map[Name::NORMALS] = shader;
 	}
 
 }

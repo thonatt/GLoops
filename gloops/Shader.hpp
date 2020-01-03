@@ -173,7 +173,7 @@ namespace gloops {
 	public:
 
 		enum class Name {
-			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH
+			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH, NORMALS
 		};
 
 		ShaderCollection();
@@ -184,6 +184,7 @@ namespace gloops {
 		void renderPhongMesh(const Cameraf& eye, const MeshGL& mesh);
 		void renderColoredMesh(const Cameraf& eye, const MeshGL& mesh);
 		void renderTexturedMesh(const Cameraf& eye, const MeshGL& mesh, const Texture& tex, float alpha = 1.0f);
+		void renderNormals(const Cameraf& eye, const MeshGL& mesh, float size = 1.0f, const v4f& color = { 1,0,1,1 });
 
 		//const ShaderProgram& get(Name name);
 
@@ -193,7 +194,7 @@ namespace gloops {
 		Uniform<m3f> rotation = { "rotation" };
 		Uniform<v4f> color = { "color" };
 		Uniform<v3f> light_pos = { "light_pos" }, cam_pos{ "cam_pos" };
-		Uniform<float> alpha = { "alpha" };
+		Uniform<float> alpha = { "alpha" }, size = { "size" };
 
 	protected:
 		std::map<Name, ShaderProgram> shader_map;
@@ -202,7 +203,7 @@ namespace gloops {
 		void initPhong();
 		void initColoredMesh();
 		void initTexturedMesh();
-
+		void initNormals();
 	};
 
 }

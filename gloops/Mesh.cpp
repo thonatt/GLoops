@@ -496,13 +496,9 @@ namespace gloops {
 	const Mesh::Box& Mesh::getBoundingBox() const
 	{
 		if(dirtyBox || _transform->dirty()){
-			Box tmpBox;
-			for (const auto& v : getVertices()) {
-				tmpBox.extend(v);
-			}
 			box.setEmpty();
-			for (int c = 0; c < 8; ++c) {
-				box.extend(applyTransformationMatrix(model(), tmpBox.corner((Box::CornerType)c)));
+			for (const auto& v : getVertices()) {
+				box.extend(applyTransformationMatrix(model(), v));
 			}
 			dirtyBox = false;
 		}

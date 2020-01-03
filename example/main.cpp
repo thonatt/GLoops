@@ -35,7 +35,7 @@ SubWindow checker_subwin()
 	static Mode currentMode = Mode::PERLIN;
 
 	auto sub = SubWindow("Texture viewer",
-		v2i(600, 600),
+		v2i(400, 400),
 		[&]
 	{
 		int mode_id = 0;
@@ -47,14 +47,6 @@ SubWindow checker_subwin()
 				ImGui::SameLine();
 			}
 			++mode_id;
-		}
-
-		std::stringstream s;
-		s << "texture zoom : " << (doReadback ? "" : " cursor out of viewport !");
-		ImGui::Text(s.str());
-		if (doReadback) {
-			ImGui::SameLine();
-			ImGui::Image(zoom.getId(), { 100,100 }, { 0,1 }, { 1,0 });
 		}
 	},
 		[&](const Input& i) 
@@ -71,12 +63,16 @@ SubWindow checker_subwin()
 			coords.y() = dst.h() - 1 - coords.y();
 
 			const int r = 10;
-			v2i xy = v2i(std::clamp(coords.x() - r, 0, dst.w() - 1), std::clamp(coords.y() - r, 0, dst.h() - 1));
+			v2i xy = coords - v2i(r, r);
 
 			Image4b tmp(2 * r + 1, 2 * r + 1);
 			tmp.setTo(v4b(0, 0, 0, 0));
 			dst.readBack(tmp, 2 * r + 1, 2 * r + 1, xy[0], xy[1]);
 			zoom.update(tmp, DefaultTexParams<Image4b>().disableMipmap().setMagFilter(GL_NEAREST));
+
+			ImGui::BeginTooltip();
+			ImGui::Image(zoom.getId(), { 100, 100 }, { 0,1 }, { 1,0 });
+			ImGui::EndTooltip();
 		}
 
 	});
@@ -109,7 +105,7 @@ SubWindow mesh_viewer_subwin()
 	meshes["sphere"] = sphere;
 	meshes["axis"] = axis;
 
-	static SubWindow mesh_viewer("Mesh viewer", v2i(800, 600));
+	SubWindow mesh_viewer("Mesh viewer", v2i(400, 400));
 	
 	mesh_viewer.setGuiFunction([&]
 	{
@@ -190,7 +186,7 @@ SubWindow mesh_modes_subwin()
 		meshC = Mesh::getSphere().setScaling(3).setTranslation(-8 * v3f(0, 1, 0)),
 		meshD = Mesh::getCube().setScaling(2).setTranslation(v3f(-5, -5, 5)).setRotation(v3f(1, 1, 1));
 
-	static Texture tex(perlinNoise(1024, 1024, 5));
+	static Texture tex(checkersTexture(10, 10, 1), TexParams().setMagFilter(GL_NEAREST)); //perlinNoise(1024, 1024, 5));
 	
 	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC, meshD);
 
@@ -219,13 +215,15 @@ SubWindow mesh_modes_subwin()
 	);
 	uv_shader.addUniforms(shaders.mvp);
 
-	enum class Mode { POINT, LINE, PHONG, UVS, TEXTURED };
+	enum class Mode { POINT, LINE, PHONG, UVS, COLORED, TEXTURED };
 	struct ModeMesh {
 		Mode mode;
 		MeshGL mesh;
-		v4f color = v4f(1, 0, 0, 1);
+		v4f color = v4f(1, 0, 0, 0.5f);
 		bool showBoundingBox = true;
+		bool showNormals = false;
 	};
+	static bool showAllBB = true;
 
 	static std::map<int, ModeMesh> meshes =
 	{
@@ -246,42 +244,67 @@ SubWindow mesh_modes_subwin()
 		{ Mode::LINE, "lines" },
 		{ Mode::PHONG, "phong" },
 		{ Mode::UVS, "uvs" },
+		{ Mode::COLORED, "color" },
 		{ Mode::TEXTURED, "textured" }
 	};
 
 	static Hit hit;
 
-	auto sub = SubWindow("Render modes", v2i(800, 600),
+	auto sub = SubWindow("Render modes", v2i(400, 400),
 		[&]
 	{
 
-		if (selectedMesh < 0) {
-			ImGui::Text("no mesh selected");
-		} else {
-			auto& mesh = meshes.at(selectedMesh);
-			for (const auto& mode : modes) {
-				if (ImGui::RadioButton((mode.second + "##" + std::to_string(selectedMesh)).c_str(), mesh.mode == mode.first)) {
-					mesh.mode = mode.first;
-				}
-				ImGui::SameLine();
-			}
-			ImGui::Checkbox(("bbox##" + std::to_string(selectedMesh)).c_str(), &mesh.showBoundingBox);
-
-			static v3f pos, rot;
-			pos = mesh.mesh.transform().translation();
-			if (ImGui::SliderFloat3("translation", pos.data(), -5, 5)) {
-				mesh.mesh.setTranslation(pos);
-			}
-			rot = mesh.mesh.transform().eulerAngles();
-			if (ImGui::SliderFloat3("rotation", rot.data(), 0, 2.0f*pi<float>())) {
-				mesh.mesh.setRotation(rot);
-			}
-			static float scale;
-			scale = mesh.mesh.transform().scaling()[0];
-			if (ImGui::SliderFloat("scale", &scale, 0, 5)) {
-				mesh.mesh.setScaling(scale);
+		if (ImGui::Checkbox("bboxes", &showAllBB)) {
+			for (auto& mesh : meshes) {
+				mesh.second.showBoundingBox = showAllBB;
 			}
 		}
+
+		if (selectedMesh < 0) {
+			ImGui::Text("No mesh selected");
+			return;
+		}
+	
+		auto& mesh = meshes.at(selectedMesh);
+
+		ImGui::SameLine();
+		ImGui::Checkbox("normals", &mesh.showNormals);
+
+		if (mesh.mode == Mode::COLORED) {
+			ImGui::SameLine();
+			ImGui::Text(", color : ");
+			ImGui::SameLine();
+			ImGui::ColorEdit4("color", &mesh.color[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+		}
+
+		ImGui::Separator();
+
+		int mode_id = 0;
+		for (const auto& mode : modes) {
+			if (ImGui::RadioButton((mode.second + "##" + std::to_string(selectedMesh)).c_str(), mesh.mode == mode.first)) {
+				mesh.mode = mode.first;
+			}
+			if (mode_id != ((int)modes.size() - 1)) {
+				ImGui::SameLine();
+			}			
+			++mode_id;
+		}
+
+		static v3f pos, rot;
+		pos = mesh.mesh.transform().translation();
+		if (ImGui::SliderFloat3("translation", pos.data(), -5, 5)) {
+			mesh.mesh.setTranslation(pos);
+		}
+		rot = mesh.mesh.transform().eulerAngles();
+		if (ImGui::SliderFloat3("rotation", rot.data(), -2.0f * pi<float>(), 2.0f * pi<float>())) {
+			mesh.mesh.setRotation(rot);
+		}
+		static float scale;
+		scale = mesh.mesh.transform().scaling()[0];
+		if (ImGui::SliderFloat("scale", &scale, 0, 5)) {
+			mesh.mesh.setScaling(scale);
+		}
+
 	},
 		[&](const Input& i)
 	{
@@ -295,7 +318,7 @@ SubWindow mesh_modes_subwin()
 			ImGui::EndTooltip();
 
 			if (i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
-				int id = (int)tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id");
+				int id = (int)std::round(tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id"));
 				selectedMesh = (selectedMesh == id ? -1 : id);
 			}
 		}
@@ -305,6 +328,10 @@ SubWindow mesh_modes_subwin()
 		dst.bindDraw();
 
 		Cameraf eye = tb.getCamera();
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 		for (auto& m : meshes) {
 
 			MeshGL& mesh = m.second.mesh;
@@ -327,6 +354,10 @@ SubWindow mesh_modes_subwin()
 				shaders.renderTexturedMesh(eye, mesh, tex);
 				break;
 			}
+			case Mode::COLORED: {
+				mesh.mode = GL_FILL;
+				shaders.renderBasicMesh(eye, mesh, m.second.color);
+			}
 			case Mode::POINT: {
 				mesh.mode = GL_POINT;
 				shaders.renderBasicMesh(eye, mesh, m.second.color);
@@ -340,12 +371,16 @@ SubWindow mesh_modes_subwin()
 			default: {}
 			}
 
+			if (m.second.showNormals) {
+				shaders.renderNormals(eye, mesh, mesh.getBoundingBox().diagonal().norm() / 25);
+			}
 			if (m.first == selectedMesh) {
 				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v4f(0, 1, 0, 1));
 			} else if (m.second.showBoundingBox) {
 				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v4f(1, 0, 0, 1));
 			}
 		}
+		glDisable(GL_BLEND);
 	});
 
 	return sub;
@@ -397,7 +432,8 @@ SubWindow rayTracingWin()
 	static bool resetRayCasting = true, useMT = false;
 
 	static const int w = 360, h = 240;
-	static SubWindow sub = SubWindow("Ray tracing", v2i(w, h));
+	
+	SubWindow sub = SubWindow("Ray tracing", v2i(w, h));
 
 	sub.setGuiFunction([&] {
 		int mode_id = 0;
@@ -574,7 +610,7 @@ int main(int argc, char** argv)
 	auto win_checkers = checker_subwin();
 	auto win_mesh = mesh_viewer_subwin();
 	auto win_mesh_modes = mesh_modes_subwin();
-	//auto win_raytracing = rayTracingWin();
+	auto win_raytracing = rayTracingWin();
 
 	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::GUI, 
 		[&] (const Window& win) {
@@ -583,7 +619,7 @@ int main(int argc, char** argv)
 		ImGui::Checkbox("mesh viewer", &win_mesh.active());
 		ImGui::Checkbox("mesh modes", &win_mesh_modes.active());
 		ImGui::SameLine();
-		//ImGui::Checkbox("ray tracing", &win_raytracing.active());
+		ImGui::Checkbox("ray tracing", &win_raytracing.active());
 	});
 
 	mainWin.renderingLoop([&]{
@@ -593,7 +629,7 @@ int main(int argc, char** argv)
 		win_checkers.show(mainWin);
 		win_mesh.show(mainWin);
 		win_mesh_modes.show(mainWin);
-		//win_raytracing.show(mainWin);
+		win_raytracing.show(mainWin);
 	});
 
 }

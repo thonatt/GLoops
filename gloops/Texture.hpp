@@ -327,6 +327,7 @@ namespace gloops {
 		TexParams& setWrapS(GLint parameter);
 		TexParams& setWrapT(GLint parameter);
 		TexParams& setWrapR(GLint parameter);
+		TexParams& setWrapAll(GLint parameter);
 
 		TexParams(const TexParamsFormat& format) : TexParamsFormat(format) {
 		}

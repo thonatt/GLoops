@@ -265,7 +265,7 @@ namespace gloops {
 		Mesh::setCPUattribute(name, data);
 
 		attributes_mapping[name] = VertexAttribute(
-			std::any_cast<const std::vector<T>&>(custom_attributes.at(name)), location
+			getAttribute(name), location
 		);
 
 		if (numElements == 0) {

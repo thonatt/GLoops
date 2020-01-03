@@ -634,4 +634,13 @@ namespace gloops {
 		return *this;
 	}
 
+	TexParams& TexParams::setWrapAll(GLint parameter)
+	{
+		wrap_r = parameter;
+		wrap_s = parameter;
+		wrap_t = parameter;
+		dirtyWrap = true;
+		return *this;
+	}
+
 }
