@@ -99,6 +99,8 @@ namespace gloops {
 
 		Hit intersect(const Ray& ray, float near = 0.0f, float far = std::numeric_limits<float>::infinity()) const;
 
+		bool occlusion(const Ray& ray, float near = 0.0f, float far = std::numeric_limits<float>::infinity()) const;
+
 		template<uint N>
 		std::array<Hit, N> intersect(
 			const std::array<Ray, N>& rays,
@@ -113,16 +115,15 @@ namespace gloops {
 		template<typename F, typename ... Args>
 		auto interpolate(const Hit& hit, F&& meshMember, Args&& ... args) const;
 
-		bool visible(const v3f& ptA, const v3f& ptB) const;
-		bool visible(const v3f& ptA, const v3f& ptB, v3f& dir, float& dist) const;
-
 		void checkScene() const;
 
 	private:
-		static void initRayHit(RTCRayHit& out, const Ray& ray, float near, float far);
+		void initRayHit(RTCRayHit& out, const Ray& ray, float near, float far) const;
+
+		void initRay(RTCRay& out, const Ray& ray, float near, float far) const;
 
 		template<uint N>
-		static void initRayHitPack(typename RayPack<N>::RayHitType& out, const std::array<Ray, N>& rays, float near, float far);
+		void initRayHitPack(typename RayPack<N>::RayHitType& out, const std::array<Ray, N>& rays, float near, float far) const;
 
 		static void errorCallback(void* userPtr, RTCError code, const char* str);
 
@@ -161,7 +162,7 @@ namespace gloops {
 
 	template<uint N>
 	inline void Raycaster::initRayHitPack(
-		typename RayPack<N>::RayHitType& out, const std::array<Ray, N>& rays, float near, float far)
+		typename RayPack<N>::RayHitType& out, const std::array<Ray, N>& rays, float near, float far) const
 	{
 		auto& eRay = out.ray;
 		auto& hit = out.hit;

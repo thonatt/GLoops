@@ -8,6 +8,12 @@
 
 using namespace gloops;
 
+bool colPicker(const std::string& s, float* ptr, uint flag = 0) {
+	ImGui::Text(s);
+	ImGui::SameLine();
+	return ImGui::ColorEdit4(s.c_str(), ptr, flag | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+};
+
 SubWindow checker_subwin() 
 {
 	static bool doReadback = false;
@@ -16,7 +22,7 @@ SubWindow checker_subwin()
 
 	static Texture
 		checkers_tex(checkersTexture(50, 50, 5)),
-		perlinTex(perlinNoise(200, 200, 5)),
+		perlinTex,
 		zoom;
 
 	static GLint filter = GL_NEAREST;
@@ -27,7 +33,7 @@ SubWindow checker_subwin()
 		std::string name;
 	};
 
-	static const std::map<Mode, ModeData> modes = {
+	static std::map<Mode, ModeData> modes = {
 		{ Mode::CHECKERS, { checkers_tex, "Checkers"}},
 		{ Mode::PERLIN, { perlinTex, "Perlin noise"}},
 	};
@@ -40,13 +46,44 @@ SubWindow checker_subwin()
 	{
 		int mode_id = 0;
 		for (const auto& mode : modes) {
-			if (ImGui::RadioButton(mode.second.name.c_str(), currentMode == mode.first )) {
+			if (ImGui::RadioButton(mode.second.name.c_str(), currentMode == mode.first)) {
 				currentMode = mode.first;
 			}
 			if (mode_id != ((int)modes.size() - 1)) {
 				ImGui::SameLine();
 			}
 			++mode_id;
+		}
+		ImGui::Separator();
+		switch (currentMode)
+		{
+		case Mode::PERLIN: {
+			static v3f colA = { 0,0,0 }, colB = { 1,1,1 };
+			static bool colChanged = true, seedChanged = true;
+			static Image1f perlin;
+			
+			if (ImGui::Button("shuffle")) {
+				seedChanged = true;
+			}
+			colChanged |= seedChanged;
+
+			if (seedChanged) {
+				perlin = 0.5 * perlinNoise(200, 200, 5) + 0.5;
+				seedChanged = false;
+			}
+
+			ImGui::SameLine();
+			colChanged |= colPicker("first", &colA[0]);
+			ImGui::SameLine();
+			colChanged |= colPicker("second", &colB[0]);
+			if (colChanged) {	
+				Image3b img = (perlin * colA + (1 - perlin) * colB).convert<uchar>(255);
+				perlinTex.update(img);
+				colChanged = false;
+			}
+		}
+		default:
+			break;
 		}
 	},
 		[&](const Input& i) 
@@ -109,12 +146,6 @@ SubWindow mesh_viewer_subwin()
 	
 	mesh_viewer.setGuiFunction([&]
 	{
-		auto colPicker = [&](const std::string& s, float* ptr, uint flag = 0) {
-			ImGui::Text(s);
-			ImGui::SameLine();
-			ImGui::ColorEdit4(s.c_str(), ptr, flag | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
-		};
-
 		colPicker("sphere color : ", &color[0]);
 		ImGui::SameLine();
 		colPicker("clear color", &mesh_viewer.clearColor[0], ImGuiColorEditFlags_NoAlpha);
@@ -270,9 +301,9 @@ SubWindow mesh_modes_subwin()
 		ImGui::SameLine();
 		ImGui::Checkbox("normals", &mesh.showNormals);
 
-		if (mesh.mode == Mode::COLORED) {
+		if (mesh.mode == Mode::COLORED || mesh.mode == Mode::POINT || mesh.mode == Mode::LINE) {
 			ImGui::SameLine();
-			ImGui::Text(", color : ");
+			ImGui::Text("color : ");
 			ImGui::SameLine();
 			ImGui::ColorEdit4("color", &mesh.color[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
 		}
@@ -406,6 +437,8 @@ SubWindow rayTracingWin()
 	static const v3f lightPosition = 0.9*v3f::UnitY(), lightColor = v3f::Ones();
 
 	//setup raycaster, camera and buffers
+
+	using Ray = RayT<float>;
 	static Raycaster raycaster;
 	raycaster.addMesh(outerBox, innerBoxA, innerBoxB);
 
@@ -433,7 +466,7 @@ SubWindow rayTracingWin()
 
 	static const int w = 360, h = 240;
 	
-	SubWindow sub = SubWindow("Ray tracing", v2i(w, h));
+	SubWindow sub = SubWindow("Ray tracing", v2i(600, 600));
 
 	sub.setGuiFunction([&] {
 		int mode_id = 0;
@@ -463,8 +496,30 @@ SubWindow rayTracingWin()
 		ImGui::Text(s.str());
 	});
 
+	static v2i clicked;
+	static bool gatherPaths = false, showPaths = false;
+	static std::vector<v3f> paths, colors, normals;
+	static ShaderCollection shaders;
+
 	sub.setUpdateFunction([&](const Input& i) {
 		tb.update(i);
+
+		if (i.keyActive(GLFW_KEY_LEFT_ALT) && i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
+			if (!gatherPaths) {
+				v2d uvs = i.mousePosition().cwiseQuotient(i.viewport().diagonal());
+				uvs.y() = 1.0 - uvs.y();
+				clicked = uvs.cwiseProduct(v2d(w, h)).template cast<int>();
+				paths.resize(0);
+				normals.resize(0); 
+				colors.resize(0);
+				gatherPaths = true;
+				showPaths = true;
+				resetRayCasting = true;
+			} else {
+				showPaths = false;
+				gatherPaths = false;
+			}
+		}
 	});
 
 	sub.setRenderingFunction([&](Framebuffer& dst) {
@@ -472,7 +527,15 @@ SubWindow rayTracingWin()
 		currentSamplesAverage.resize(w, h);
 
 		RaycastingCameraf cam = RaycastingCameraf(tb.getCamera(), w, h);
-		resetRayCasting |= (previousCam != cam);
+		const bool sameCam = (previousCam == cam);
+		resetRayCasting |= (!sameCam);
+		gatherPaths &= sameCam;
+
+		if (gatherPaths) {
+			ImGui::BeginTooltip();
+			ImGui::Text("collecting paths");
+			ImGui::EndTooltip();
+		}
 
 		if (resetRayCasting) {
 			currentNumSamples = 0;
@@ -480,15 +543,6 @@ SubWindow rayTracingWin()
 			hits.setTo(Vec<uchar, 1>(1));
 			resetRayCasting = false;
 		} 
-
-		if (useMT) {
-			raycaster.checkScene();
-		}
-
-		if (currentNumSamples >= maxNumSamples) {
-			dst.blitFrom(tex);
-			return;
-		}
 
 		auto rowJob = [&](int i) {
 			for (int j = 0; j < w; ++j) {
@@ -503,8 +557,8 @@ SubWindow rayTracingWin()
 
 					for (int b = 0; (b < numBounces) && continueRT; ++b) {
 
-						Hit hit = raycaster.intersect(ray, 0.001f);
-						bool successful = hit.successful();
+						const Hit hit = raycaster.intersect(ray, 0.001f);
+						const bool successful = hit.successful();
 
 						hits.at(j, i) |= (uchar)successful;
 						if (!successful) {
@@ -530,9 +584,10 @@ SubWindow rayTracingWin()
 							continueRT = false; continue;
 						}
 						default: {
-							v3f dir;
-							float distToLight;
-							if (raycaster.visible(p, lightPosition, dir, distToLight)) {
+							//raycaster.visible(p, lightPosition, dir, distToLight)
+							float distToLight = (lightPosition - p).norm();
+							v3f dir = (lightPosition - p) / distToLight;
+							if (!raycaster.occlusion(Ray(p, dir), 0.01f*distToLight, 0.99f*distToLight)) {
 								const float diffuse = std::max(dir.dot(n), 0.0f);
 								const float attenuation = std::clamp<float>(1.0f - (distToLight * distToLight) / (2.5f * 2.5f), 0, 1);
 
@@ -546,6 +601,14 @@ SubWindow rayTracingWin()
 								color = color.cwiseProduct(col);
 								sampleColor += color.cwiseProduct(illumination);
 
+								//if (gatherPaths && j == clicked[0] && i == clicked[1]) {
+								//	paths.push_back(ray.origin());
+								//	paths.push_back(p);
+								//	normals.push_back(p);
+								//	normals.push_back(p + 0.1 * n);
+								//	colors.push_back(sampleColor);
+								//	colors.push_back(sampleColor);
+								//}
 							} else if (mode == Mode::DIRECT_LIGHT) {
 								sampleColor = v3f::Zero();
 								continueRT = false;
@@ -564,40 +627,55 @@ SubWindow rayTracingWin()
 			}
 		};
 
-		if (useMT) {
-			parallelForEach(0, h, [&](int i) {
-				rowJob(i);
-			});
-		} else {
-			for (int i = 0; i < h; ++i) {
-				rowJob(i);
+	
+		if (currentNumSamples < maxNumSamples) {
+			raycaster.checkScene();
+			if (useMT) {			
+				parallelForEach(0, h, [&](int i) {
+					rowJob(i);
+				});
+			} else {
+				for (int i = 0; i < h; ++i) {
+					rowJob(i);
+				}
 			}
-		}
-		  
-		currentNumSamples += samplesPerPixel;
-		previousCam = cam;
 
-		Image3b img;
-		switch (mode)
-		{
-		case Mode::COLOR: {
-			img = currentSamplesAverage.convert<uchar>(255, 0);
-			break;
-		}
-		case Mode::DEPTH: {
-			img = currentSamplesAverage.normalized<uchar>(0, 255, hitMask, 255);
-			break;
-		}
-		case Mode::DIRECT_LIGHT: {
-			img = currentSamplesAverage.convert<uchar>(255, 0, hitMask, 50);
-			break;
-		}
-		default:
-			img = currentSamplesAverage.convert<uchar>(128, 128, hitMask, 255);
+			currentNumSamples += samplesPerPixel;
+			previousCam = cam;
+
+			Image3b img;
+			switch (mode)
+			{
+			case Mode::COLOR: {
+				img = currentSamplesAverage.convert<uchar>(255, 0);
+				break;
+			}
+			case Mode::DEPTH: {
+				img = currentSamplesAverage.normalized<uchar>(0, 255, hitMask, 255);
+				break;
+			}
+			case Mode::DIRECT_LIGHT: {
+				img = currentSamplesAverage.convert<uchar>(255, 0, hitMask, 50);
+				break;
+			}
+			default:
+				img = currentSamplesAverage.convert<uchar>(128, 128, hitMask, 255);
+			}
+
+			tex.update(img);
+		} else {
+			gatherPaths = false;
 		}
 
-		tex.update(img);
 		dst.blitFrom(tex);
+
+		dst.bindDraw();
+		if (showPaths) {		
+			auto meshPaths = MeshGL::fromEndPoints(paths);
+			meshPaths.setColors(colors);
+			shaders.renderColoredMesh(cam, meshPaths);
+			shaders.renderBasicMesh(cam, MeshGL::fromEndPoints(normals), v4f(0, 1, 0, 1));
+		}
 	});
 
 	return sub;

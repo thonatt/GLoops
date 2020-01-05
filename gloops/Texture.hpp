@@ -133,15 +133,63 @@ namespace gloops {
 			}
 		}
 
+		Image<float, N> operator+(const Image& other) const {
+			Image out(w(), h());
+			for (int i = 0; i < h(); ++i) {
+				for (int j = 0; j < w(); ++j) {
+					for (int c = 0; c < N; ++c) {
+						out.pixel(j, i)[c] = pixel(j, i)[c] + other.pixel(j, i)[c];
+					}			
+				}
+			}
+			return out;
+		}
+
+		Image<float, N> operator-(const Image& other) const {
+			Image out(w(), h());
+			for (int i = 0; i < h(); ++i) {
+				for (int j = 0; j < w(); ++j) {
+					for (int c = 0; c < N; ++c) {
+						out.pixel(j, i)[c] = pixel(j, i)[c] - other.pixel(j, i)[c];
+					}
+				}
+			}
+			return out;
+		}
+
+		Image<float, N> operator*(const Image& other) const {
+			Image out(w(), h());
+			for (int i = 0; i < h(); ++i) {
+				for (int j = 0; j < w(); ++j) {
+					for (int c = 0; c < N; ++c) {
+						out.pixel(j, i)[c] = pixel(j, i)[c] * other.pixel(j, i)[c];
+					}
+				}
+			}
+			return out;
+		}
+
+		template<typename U, int M>
+		Image<float, (N>M ? N : M)> operator*(const Vec<U, M>& other) const {
+			constexpr int C = (N > M ? N : M);
+			Image<float, C> out(w(), h());
+			for (int i = 0; i < h(); ++i) {
+				for (int j = 0; j < w(); ++j) {
+					for (int c = 0; c < C; ++c) {
+						out.pixel(j, i)[c] = pixel(j, i)[std::min(c, N)] * other[std::min(c, M)];
+					}				
+				}
+			}
+			return out;
+		}
+
 		template<typename U = T, int M = N>
 		Image<U, M> convert(
 			const Vec<double, M>& scaling, const Vec<double, M>& offset,
 			const std::function<bool(int x, int y)>& mask = [](int i, int j) { return true; },
 			const Vec<double, M>& defValue = 0
 		) const {
-
 			Image<U, M> out(w(), h());
-
 			for (int n = 0; n < M; ++n) {
 				const int c = std::min(n, N - 1);
 				for (int i = 0; i < h(); ++i) {
@@ -211,15 +259,60 @@ namespace gloops {
 		int _w = 0, _h = 0;
 	};
 
+	template<typename T, int N>
+	Image<float, N> operator-(double s, const Image<T, N>& image) {
+		Image<float, N> out(image.w(), image.h());
+		for (int i = 0; i < out.h(); ++i) {
+			for (int j = 0; j < out.w(); ++j) {
+				for (int c = 0; c < N; ++c) {
+					out.pixel(j, i)[c] = (float)s - (float)image.pixel(j, i)[c];
+				}
+			}
+		}
+		return out;
+	}
+
+	template<typename T, int N>
+	Image<float, N> operator+(double s, const Image<T, N>& image) {
+		Image<float, N> out(image.w(), image.h());
+		for (int i = 0; i < out.h(); ++i) {
+			for (int j = 0; j < out.w(); ++j) {
+				for (int c = 0; c < N; ++c) {
+					out.pixel(j, i)[c] = (float)s + (float)image.pixel(j, i)[c];
+				}
+			}
+		}
+		return out;
+	}
+
+	template<typename T, int N>
+	Image<float, N> operator+(const Image<T, N>& image, double s) {
+		return s + image;
+	}
+
+	template<typename T, int N>
+	Image<float, N> operator*(double s, const Image<T, N>& image) {
+		Image<float, N> out(image.w(), image.h());
+		for (int i = 0; i < out.h(); ++i) {
+			for (int j = 0; j < out.w(); ++j) {
+				for (int c = 0; c < N; ++c) {
+					out.pixel(j, i)[c] = (float)s * (float)image.pixel(j, i)[c];
+				}
+			}
+		}
+		return out;
+	}
+
 	using Image1b = Image<uchar, 1>;
 	using Image3b = Image<uchar, 3>;
 	using Image4b = Image<uchar, 4>;
 	
 	using Image1f = Image<float, 1>;
+	using Image2f = Image<float, 2>;
 	using Image3f = Image<float, 3>;
 
 	Image3b checkersTexture(int w, int h, int size);
-	Image3b perlinNoise(int w, int h, int size = 5);
+	Image1f perlinNoise(int w, int h, int size = 5, int levels = 1);
 
 	struct ImageInfosData {
 		ImageInfosData(int w, int h, int n, const void* data)
@@ -414,7 +507,12 @@ namespace gloops {
 		template<typename T>
 		void createFromImage(const ImageInfos<T>& img);
 
-		int _w, _h, _n;
+		struct Size {
+			int _w, _h, _n;
+		};
+		
+		std::shared_ptr<Size> size;
+
 		//TexParams params;
 		GLptr id;
 		//bool filter_changed = true;
@@ -553,7 +651,7 @@ namespace gloops {
 	inline void Texture::createFromImage(const ImageInfos<T>& img)
 	{
 		allocate(img.w(), img.h(), img.n());
-		uploadToGPU(0, 0, _w, _h, img.data());
+		uploadToGPU(0, 0, w(), h(), img.data());
 	}
 
 	template<typename T>
@@ -562,7 +660,7 @@ namespace gloops {
 		ImageInfos<T> infos(t);
 		if (w() != infos.w() || h() != infos.h() || n() != infos.n() || getParams() != _params) {
 			static_cast<TexParams&>(*this) = _params;
-			createGPUid();
+			//createGPUid();
 			createFromImage(infos);
 		} else {
 			check();

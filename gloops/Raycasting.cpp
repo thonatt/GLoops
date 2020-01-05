@@ -8,9 +8,10 @@ namespace gloops {
 		const auto& hit = rayHit.hit;
 
 		geomId = hit.geomID;
-		if (successful()) {
-			triId = hit.primID;
-			instId = hit.instID[0];
+		instId = hit.instID[0];
+
+		if (successful()) {		
+			triId = hit.primID;	
 			dist = rayHit.ray.tfar;
 			normal = v3f(hit.Ng_x, hit.Ng_y, hit.Ng_z).normalized();
 			coords = v3f(hit.u, hit.v, std::clamp(1.0f - hit.u - hit.v, 0.0f, 1.0f));
@@ -19,7 +20,7 @@ namespace gloops {
 
 	bool Hit::successful() const
 	{
-		return geomId != RTC_INVALID_GEOMETRY_ID;
+		return geomId != RTC_INVALID_GEOMETRY_ID && instId != RTC_INVALID_GEOMETRY_ID;
 	}
 
 	uint Hit::triangleId() const
@@ -62,8 +63,8 @@ namespace gloops {
 		sceneReady = std::make_shared<bool>(false);
 
 		context = ContextPtr(new RTCIntersectContext());
-		context->flags = RTC_INTERSECT_CONTEXT_FLAG_COHERENT;
 		rtcInitIntersectContext(context.get());
+		//context->flags = RTC_INTERSECT_CONTEXT_FLAG_INCOHERENT;
 
 	}
 
@@ -127,7 +128,7 @@ namespace gloops {
 
 	void Raycaster::setupMeshCallbacks(const Mesh& mesh)
 	{
-		mesh.addModelCallback([&] { 
+		mesh.addModelCallback([&] {  
 			return sceneReady && !(*sceneReady = false);
 		});
 	}
@@ -172,40 +173,25 @@ namespace gloops {
 		}
 	}
 
-	bool Raycaster::visible(const v3f& ptA, const v3f& ptB) const
+	void Raycaster::initRayHit(RTCRayHit& out, const Ray& ray, float near, float far) const
 	{
-		checkScene();
-		v3f seg = (ptB - ptA);
-		float dist = seg.norm();
-		Hit hit = intersect(Ray(ptA, seg / dist));
-		return !hit.successful() || (hit.distance() > dist * 0.999f);
-	}
-
-	bool Raycaster::visible(const v3f& ptA, const v3f& ptB, v3f& dir, float& dist) const
-	{
-		checkScene();
-		v3f seg = (ptB - ptA);
-		dist = seg.norm();
-		dir = seg / dist;
-		Hit hit = intersect(Ray(ptA, dir));
-		return !hit.successful() || (hit.distance() > dist * 0.999f);
-	}
-
-	void Raycaster::initRayHit(RTCRayHit& out, const Ray& ray, float near, float far)
-	{
-		RTCRay& eRay = out.ray;
-		eRay.tnear = near;
-		eRay.tfar = far;
-		eRay.org_x = ray.origin()[0];
-		eRay.org_y = ray.origin()[1];
-		eRay.org_z = ray.origin()[2];
-		eRay.dir_x = ray.direction()[0];
-		eRay.dir_y = ray.direction()[1];
-		eRay.dir_z = ray.direction()[2];
-		eRay.flags = 0;
+		initRay(out.ray, ray, near, far);
 
 		RTCHit& hit = out.hit;
 		hit.geomID = RTC_INVALID_GEOMETRY_ID;
+	}
+
+	void Raycaster::initRay(RTCRay& out, const Ray& ray, float near, float far) const
+	{
+		out.tnear = std::max(0.0f, near);
+		out.tfar = std::max(near, far);
+		out.org_x = ray.origin()[0];
+		out.org_y = ray.origin()[1];
+		out.org_z = ray.origin()[2];
+		out.dir_x = ray.direction()[0];
+		out.dir_y = ray.direction()[1];
+		out.dir_z = ray.direction()[2];
+		out.flags = 0;
 	}
 
 	Hit Raycaster::intersect(const Ray& ray, float near, float far) const
@@ -218,6 +204,18 @@ namespace gloops {
 		rtcIntersect1(scene.get(), context.get(), &rayHit);
 
 		return Hit(rayHit);
+	}
+
+	bool Raycaster::occlusion(const Ray& ray, float near, float far) const
+	{
+		checkScene();
+
+		RTCRay eRay;
+		initRay(eRay, ray, near, far);
+
+		rtcOccluded1(scene.get(), context.get(), &eRay);
+
+		return eRay.tfar < 0;
 	}
 
 }

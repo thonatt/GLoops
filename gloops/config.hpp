@@ -182,7 +182,7 @@ namespace gloops {
 		}
 
 		const int numCores = std::thread::hardware_concurrency();
-		const int numThreads = std::max(numCores - (numCores > 1 ? 1 : 0), 1);
+		const int numThreads = std::min(2, std::max(numCores - 1, 1));
 		const int numJobsPerThread = numJobs / numThreads + 1;
 
 		std::vector<std::thread> threads(numThreads);
@@ -191,7 +191,7 @@ namespace gloops {
 				for (int i = from; i < to; ++i) {
 					fun(i);
 				}
-			}, std::forward<F>(f), t * numJobsPerThread, std::min((t + 1) * numJobsPerThread, to_excl));
+			}, std::forward<F>(f), from_incl + t * numJobsPerThread, std::min(from_incl + (t + 1) * numJobsPerThread, to_excl));
 		}
 		std::for_each(threads.begin(), threads.end(), [](std::thread& t) { t.join(); });
 	}
@@ -229,14 +229,14 @@ namespace gloops {
 	template<typename T, typename U>
 	auto smoothstep3(const T& a1, const T& a2, U x)
 	{
-		U u = x * x * (T(3) - T(2) * x);
+		const U u = x * x * (T(3) - T(2) * x);
 		return a1 * (T(1) - u) + a2 * u;
 	}
 
 	template<typename T, typename U>
 	auto smoothstep5(const T& a1, const T& a2, U x)
 	{
-		U u = x* x* x* (x * (x * U(6) - U(15)) + U(10));
+		const U u = x* x* x* (x * (x * U(6) - U(15)) + U(10));
 		return a1 * (T(1) - u) + a2 * u;
 	}
 	

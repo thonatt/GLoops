@@ -33,7 +33,7 @@ namespace gloops {
 		return out;
 	}
 
-	Image3b perlinNoise(int w, int h, int size)
+	Image1f perlinNoise(int w, int h, int size, int levels)
 	{
 		size = std::max(size, 1);
 
@@ -73,7 +73,7 @@ namespace gloops {
 			}
 		}
 
-		return out.convert<uchar, 3>(128,128);
+		return out;
 	}
 
 	const TexParamsFormat TexParamsFormat::RGB = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_RGB);
@@ -81,13 +81,16 @@ namespace gloops {
 	const TexParamsFormat TexParamsFormat::RGBA = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGBA8, GL_RGBA);
 	const TexParamsFormat TexParamsFormat::RGBA32F = TexParamsFormat(GL_TEXTURE_2D, GL_FLOAT, GL_RGBA32F, GL_RGBA);
 
+
 	Texture::Texture(TexParams params) : TexParams(params)
-	{
+	{	
+		size = std::make_shared<Size>();
 		createGPUid();
 	}
 
 	Texture::Texture(int w, int h, int nchannels, TexParams params) : TexParams(params)
 	{
+		size = std::make_shared<Size>();
 		createGPUid();
 		allocate(w, h, nchannels);
 	}
@@ -101,11 +104,11 @@ namespace gloops {
 
 	void Texture::allocate(int width, int height, int nchannels)
 	{
-		_w = width;
-		_h = height;
-		_n = nchannels;
+		(*size)._w = width;
+		(*size)._h = height;
+		(*size)._n = nchannels;
 
-		const int num_lvls_estimate = useMipmap ? static_cast<int>(std::ceil(std::log(std::max(_w, _h)))) + 1 : 1;
+		const int num_lvls_estimate = useMipmap ? static_cast<int>(std::ceil(std::log(std::max(w(), h())))) + 1 : 1;
 
 		bind();
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -115,7 +118,7 @@ namespace gloops {
 		//std::cout << " ALLOCATE " << id << " : " << _w << " " << _h << " " << _n << " " << num_lvls_estimate << std::endl;
 
 		gl_check();
-		glTexStorage2D(target, num_lvls_estimate, internal_format, _w, _h);
+		glTexStorage2D(target, num_lvls_estimate, internal_format, w(), h());
 		gl_check();
 	}
 
@@ -152,17 +155,17 @@ namespace gloops {
 
 	int Texture::w() const
 	{
-		return _w;
+		return (*size)._w;
 	}
 
 	int Texture::h() const
 	{
-		return _h;
+		return (*size)._h;
 	}
 
 	int Texture::n() const
 	{
-		return _n;
+		return (*size)._n;
 	}
 
 	const TexParams& Texture::getParams() const
