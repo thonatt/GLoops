@@ -129,6 +129,7 @@ namespace gloops {
 	void Raycaster::setupMeshCallbacks(const Mesh& mesh)
 	{
 		mesh.addModelCallback([&] {  
+			//std::cout << "model cb " << std::flush;
 			return sceneReady && !(*sceneReady = false);
 		});
 	}
@@ -156,7 +157,7 @@ namespace gloops {
 		if (!(*sceneReady)) {
 			for (const auto& mesh : meshes) {
 				const auto& m = mesh.second;
-				rtcSetGeometryTransform(m.instance.get(), 0, RTCFormat::RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, m.mesh.transform().model().data());
+				rtcSetGeometryTransform(m.instance.get(), 0, RTCFormat::RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, m.mesh.model().data());
 				rtcCommitGeometry(m.instance.get());
 			}
 

@@ -84,17 +84,29 @@ namespace gloops {
 
 namespace ImGui {
 
-	inline void Text(const std::string& s) {
+	inline void Text(const ::std::string& s) {
 		ImGui::Text("%s", s.c_str());
 	}
 
-	inline void TextColored(const std::string& s, const gloops::v4f& c) {
+	inline void Text(const ::std::stringstream& s) {
+		ImGui::Text(s.str());
+	}
+
+	inline void TextColored(const ::std::string& s, const gloops::v4f& c) {
 		ImGui::TextColored({ c[0],c[1],c[2],c[3] }, "%s", s.c_str());
 	}
 
 	inline float TitleHeight() {
 		return ImGui::GetTextLineHeight() + ImGui::GetStyle().FramePadding.y * 2.0f;
 	}
+
+	template<typename F>
+	void ItemWithSize(float size, F&& f) {
+		ImGui::PushItemWidth(size);
+		f();
+		ImGui::PopItemWidth();
+	}
+
 }
 
 namespace gloops {
@@ -174,7 +186,7 @@ namespace gloops {
 	}
 
 	template<typename F>
-	void parallelForEach(int from_incl, int to_excl, F&& f)
+	void parallelForEach(int from_incl, int to_excl, F&& f, int max_num_threads)
 	{
 		const int numJobs = to_excl - from_incl;
 		if (numJobs <= 0) {
@@ -182,16 +194,21 @@ namespace gloops {
 		}
 
 		const int numCores = std::thread::hardware_concurrency();
-		const int numThreads = std::min(2, std::max(numCores - 1, 1));
+		const int numThreads = std::min(max_num_threads, std::max(numCores - 1, 1));
 		const int numJobsPerThread = numJobs / numThreads + 1;
+
+		std::cout << numJobs << " " << numJobsPerThread << std::endl;
 
 		std::vector<std::thread> threads(numThreads);
 		for (int t = 0; t < numThreads; ++t) {
+			const int t_start = from_incl + t * numJobsPerThread;
+			const int t_end = std::min(from_incl + (t + 1) * numJobsPerThread, to_excl);
+			std::cout << "\t" << t_start << " " << t_end << std::endl;
 			threads[t] = std::thread([](F&& fun, const int from, const int to) {
 				for (int i = from; i < to; ++i) {
 					fun(i);
 				}
-			}, std::forward<F>(f), from_incl + t * numJobsPerThread, std::min(from_incl + (t + 1) * numJobsPerThread, to_excl));
+			}, std::forward<F>(f), t_start, t_end);
 		}
 		std::for_each(threads.begin(), threads.end(), [](std::thread& t) { t.join(); });
 	}
@@ -201,7 +218,7 @@ namespace gloops {
 	{
 		static std::random_device device;
 		static std::mt19937 generator(device());
-		static std::uniform_real_distribution<T> distribution(-1, 1);
+		std::uniform_real_distribution<T> distribution(-1, 1);
 
 		Vec<T, N> out;
 		for (int i = 0; i < N; ++i) {

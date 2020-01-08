@@ -14,31 +14,63 @@ bool colPicker(const std::string& s, float* ptr, uint flag = 0) {
 	return ImGui::ColorEdit4(s.c_str(), ptr, flag | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
 };
 
+static Window mainWin = Window("GLoops demos");
+
+static TexParams texParams = TexParams().enableMipmap().setMagFilter(GL_NEAREST);
+
+Texture checkers_tex = Texture(checkersTexture(80, 80, 10), texParams), perlinTex, 
+	kittenTex = Texture::fromPath("../kitten.png", texParams);
+
+enum class TexMode { CHECKERS, PERLIN, KITTEN };
+struct ModeData {
+	Texture tex;
+	std::string name;
+};
+
+static std::map<TexMode, ModeData> modes = {
+	{ TexMode::CHECKERS, { checkers_tex, "Checkers" }},
+	{ TexMode::PERLIN, { perlinTex, "Perlin noise" }},
+	{ TexMode::KITTEN, { kittenTex, "Kitten jpg" }},
+};
+
+static TexMode currentMode = TexMode::KITTEN;
+
+Texture& currentTex() {
+	return modes.at(currentMode).tex;
+}
+
 SubWindow checker_subwin() 
 {
 	static bool doReadback = false;
 	static v2d uv;
 	static v4f color; 
 
-	static Texture
-		checkers_tex(checkersTexture(50, 50, 5)),
-		perlinTex,
-		zoom;
+	static ShaderCollection shaders;
 
-	static GLint filter = GL_NEAREST;
-
-	enum class Mode { CHECKERS, PERLIN };
-	struct ModeData { 
-		Texture tex;
-		std::string name;
+	static const std::map<GLenum, std::string> wraps = {
+		{ GL_REPEAT, "REPEAT" },
+		{ GL_MIRRORED_REPEAT , "MIRRORED_REPEAT" },
+		{ GL_CLAMP_TO_EDGE, "CLAMP_TO_EDGE" },
+		{ GL_CLAMP_TO_BORDER, "CLAMP_TO_BORDER" },
 	};
 
-	static std::map<Mode, ModeData> modes = {
-		{ Mode::CHECKERS, { checkers_tex, "Checkers"}},
-		{ Mode::PERLIN, { perlinTex, "Perlin noise"}},
+	static Texture zoom;
+
+	static const std::map<GLenum, std::string> mag_filters = {
+		{ GL_NEAREST , "NEAREST" },
+		{ GL_LINEAR, "LINEAR" },
 	};
 
-	static Mode currentMode = Mode::PERLIN;
+	static const std::map<GLenum, std::string> min_filters = {
+		//{ GL_NEAREST, "NEAREST" },
+		//{ GL_LINEAR , "LINEAR" },
+		{ GL_NEAREST_MIPMAP_NEAREST , "N_MIPMAP_N" },
+		{ GL_LINEAR_MIPMAP_NEAREST , "L_MIPMAP_N" },
+		{ GL_NEAREST_MIPMAP_LINEAR , "N_MIPMAP_L" },
+		{ GL_LINEAR_MIPMAP_LINEAR , "L_MIPMAP_L" },
+	};
+
+	static float lod = 0, zoomLevel = 1.3f;
 
 	auto sub = SubWindow("Texture viewer",
 		v2i(400, 400),
@@ -54,21 +86,22 @@ SubWindow checker_subwin()
 			}
 			++mode_id;
 		}
-		ImGui::Separator();
+
 		switch (currentMode)
 		{
-		case Mode::PERLIN: {
+		case TexMode::PERLIN: {
 			static v3f colA = { 0,0,0 }, colB = { 1,1,1 };
 			static bool colChanged = true, seedChanged = true;
 			static Image1f perlin;
 			
-			if (ImGui::Button("shuffle")) {
+			ImGui::Separator();
+			if (ImGui::Button("Shuffle")) {
 				seedChanged = true;
 			}
 			colChanged |= seedChanged;
 
 			if (seedChanged) {
-				perlin = 0.5 * perlinNoise(200, 200, 5) + 0.5;
+				perlin = 0.5 * perlinNoise(80, 80, 5) + 0.5;
 				seedChanged = false;
 			}
 
@@ -78,22 +111,76 @@ SubWindow checker_subwin()
 			colChanged |= colPicker("second", &colB[0]);
 			if (colChanged) {	
 				Image3b img = (perlin * colA + (1 - perlin) * colB).convert<uchar>(255);
-				perlinTex.update(img);
+				perlinTex.update(img, texParams);
 				colChanged = false;
 			}
 		}
 		default:
 			break;
 		}
+
+		ImGui::Separator();
+		ImGui::Text("Wrapping : ");
+		for (const auto& wrap : wraps) {
+			ImGui::SameLine();
+			if (ImGui::RadioButton(wrap.second.c_str(), texParams.getWrapS() == wrap.first)) {
+				texParams.setWrapAll(wrap.first);
+			}
+		}
+
+		static bool fixLods = false;
+		ImGui::ItemWithSize(150, [&] { ImGui::SliderFloat("zoom", &zoomLevel, 0.6f, 5.0f); });
+		ImGui::SameLine();
+		if (ImGui::Checkbox("Fixed lod", &fixLods)) {
+			lod = fixLods ? 0.0f : -1.0f;
+		}
+		if (fixLods) {
+			ImGui::SameLine();
+			ImGui::ItemWithSize(150, [&] { ImGui::SliderFloat("##lod", &lod, 0, float(currentTex().nLods() - 1)); });
+		}
+
+		ImGui::Text("Mag filtering : ");
+		for (const auto& filter : mag_filters) {
+			ImGui::SameLine();
+			if (ImGui::RadioButton((filter.second + "##mag").c_str(), texParams.getMagFilter() == filter.first)) {
+				texParams.setMagFilter(filter.first);
+			}
+		}
+
+		ImGui::Text("Min filtering : ");
+		for (const auto& filter : min_filters) {
+			ImGui::SameLine();
+			if (ImGui::RadioButton((filter.second + "##min").c_str(), texParams.getMinFilter() == filter.first)) {
+				texParams.setMinFilter(filter.first);
+			}
+		}
+
+		static std::array<GLint, 4> mask;
+		mask = texParams.getSwizzleMask();
+		ImGui::Text("Channel swizzling");
+		ImGui::SameLine();
+		ImGui::ItemWithSize(210, [&] {
+			if (ImGui::SliderInt3("##swizzling", mask.data(), GL_RED, GL_BLUE)) {
+				texParams.setSwizzleMask(mask);
+			}
+		});
+		
 	},
 		[&](const Input& i) 
 	{
 		doReadback = i.insideViewport();
 		uv = i.mousePosition().cwiseQuotient(i.viewport().diagonal());
+		currentTex().update(texParams);
 	},
 		[&](Framebuffer& dst) 
 	{
-		dst.blitFrom(modes.at(currentMode).tex, GL_COLOR_ATTACHMENT0, filter);
+		//dst.blitFrom(modes.at(currentMode).tex, GL_COLOR_ATTACHMENT0, filter);
+
+		static MeshGL screenQuad;
+		screenQuad = MeshGL::quad({ 0,0,0 }, { 1,1,0 }, { -1,1, 0 }, { 1.0f - zoomLevel, zoomLevel }, { zoomLevel, 1.0f - zoomLevel });
+
+		dst.bindDraw();
+		shaders.renderTexturedMesh(screenQuad, currentTex(), 1.0f, lod);
 
 		if (doReadback) {
 			v2i coords = uv.cwiseProduct(v2d(dst.w(), dst.h())).template cast<int>();
@@ -164,7 +251,7 @@ SubWindow mesh_viewer_subwin()
 				const auto& m = mesh.second;
 				header << "  num vertices : " << m.getVertices().size() << "\n";
 				header << "  num triangles : " << m.getTriangles().size() << "\n";
-				ImGui::Text(header.str());
+				ImGui::Text(header);
 
 				if (ImGui::TreeNode(("vertex data attributes##" + mesh.first).c_str())) {
 					for (const auto& attribute : m.getAttributes()) {
@@ -176,7 +263,7 @@ SubWindow mesh_viewer_subwin()
 						s << "  stride : " << att.stride << "\n";
 						s << "  normalized : " << std::boolalpha << (bool)att.normalized << "\n";
 						s << "  data ptr : " << att.pointer << "\n";
-						ImGui::Text(s.str());
+						ImGui::Text(s);
 					}
 					ImGui::TreePop();
 				}
@@ -217,8 +304,6 @@ SubWindow mesh_modes_subwin()
 		meshC = Mesh::getSphere().setScaling(3).setTranslation(-8 * v3f(0, 1, 0)),
 		meshD = Mesh::getCube().setScaling(2).setTranslation(v3f(-5, -5, 5)).setRotation(v3f(1, 1, 1));
 
-	static Texture tex(checkersTexture(10, 10, 1), TexParams().setMagFilter(GL_NEAREST)); //perlinNoise(1024, 1024, 5));
-	
 	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC, meshD);
 
 	static ShaderCollection shaders;
@@ -285,7 +370,7 @@ SubWindow mesh_modes_subwin()
 		[&]
 	{
 
-		if (ImGui::Checkbox("bboxes", &showAllBB)) {
+		if (ImGui::Checkbox("Show AABBs", &showAllBB)) {
 			for (auto& mesh : meshes) {
 				mesh.second.showBoundingBox = showAllBB;
 			}
@@ -299,13 +384,11 @@ SubWindow mesh_modes_subwin()
 		auto& mesh = meshes.at(selectedMesh);
 
 		ImGui::SameLine();
-		ImGui::Checkbox("normals", &mesh.showNormals);
+		ImGui::Checkbox("Show normals", &mesh.showNormals);
 
 		if (mesh.mode == Mode::COLORED || mesh.mode == Mode::POINT || mesh.mode == Mode::LINE) {
 			ImGui::SameLine();
-			ImGui::Text("color : ");
-			ImGui::SameLine();
-			ImGui::ColorEdit4("color", &mesh.color[0], ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+			ImGui::ColorEdit4("Selected mesh color", &mesh.color[0], ImGuiColorEditFlags_NoInputs);
 		}
 
 		ImGui::Separator();
@@ -323,19 +406,46 @@ SubWindow mesh_modes_subwin()
 
 		static v3f pos, rot;
 		pos = mesh.mesh.transform().translation();
-		if (ImGui::SliderFloat3("translation", pos.data(), -5, 5)) {
+		if (ImGui::SliderFloat3("Translation", pos.data(), -5, 5)) {
 			mesh.mesh.setTranslation(pos);
 		}
 		rot = mesh.mesh.transform().eulerAngles();
-		if (ImGui::SliderFloat3("rotation", rot.data(), -2.0f * pi<float>(), 2.0f * pi<float>())) {
+		if (ImGui::SliderFloat3("Totation", rot.data(), -2.0f * pi<float>(), 2.0f * pi<float>())) {
 			mesh.mesh.setRotation(rot);
 		}
 		static float scale;
 		scale = mesh.mesh.transform().scaling()[0];
-		if (ImGui::SliderFloat("scale", &scale, 0, 5)) {
+		if (ImGui::SliderFloat("Scale", &scale, 0, 5)) {
 			mesh.mesh.setScaling(scale);
 		}
 
+		const auto& m = mesh.mesh;
+		if (ImGui::TreeNode("buffers data")) {
+			std::stringstream h;
+			h << "num vertices : " << m.getVertices().size() << "\n";
+			h << "num triangles : " << m.getTriangles().size() << "\n";
+			ImGui::Text(h);
+			ImGui::TreePop();
+		}
+		if (ImGui::TreeNode("vertex data attributes")) {
+			std::map<int, std::pair<std::string, VertexAttribute> > attributes_sorted_by_location;
+			for (const auto& attribute : m.getAttributes()) {
+				attributes_sorted_by_location[attribute.second.index] = { attribute.first, attribute.second };
+			}
+			for (const auto& attribute : attributes_sorted_by_location) {
+				std::stringstream s;
+				const auto& att = attribute.second.second;
+				s << attribute.second.first << "\n";
+				s << "  location : " << att.index << "\n";
+				s << "  nchannels : " << att.num_channels << "\n";
+				s << "  type : " << att.type << "\n";
+				s << "  stride : " << att.stride << "\n";
+				s << "  normalized : " << std::boolalpha << (bool)att.normalized << "\n";
+				s << "  data ptr : " << att.pointer << "\n";
+				ImGui::Text(s);
+			}
+			ImGui::TreePop();
+		}
 	},
 		[&](const Input& i)
 	{
@@ -344,12 +454,18 @@ SubWindow mesh_modes_subwin()
 		hit = tb.getRaycaster().intersect(eye.getRay(i.mousePosition<float>()));
 
 		if (hit.successful()) {
+
+			int id = (int)std::round(tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id"));
+
 			ImGui::BeginTooltip();
-			ImGui::Text("Click to select : " + std::to_string(hit.instanceId()));
+			if (id != selectedMesh) {
+				ImGui::Text("Click to select : " + std::to_string(hit.instanceId()));
+			} else {
+				ImGui::Text("Click to unselect : " + std::to_string(hit.instanceId()));
+			}
 			ImGui::EndTooltip();
 
 			if (i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
-				int id = (int)std::round(tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id"));
 				selectedMesh = (selectedMesh == id ? -1 : id);
 			}
 		}
@@ -382,7 +498,7 @@ SubWindow mesh_modes_subwin()
 			}
 			case Mode::TEXTURED: {
 				mesh.mode = GL_FILL;
-				shaders.renderTexturedMesh(eye, mesh, tex);
+				shaders.renderTexturedMesh(eye, mesh, currentTex());
 				break;
 			}
 			case Mode::COLORED: {
@@ -461,7 +577,7 @@ SubWindow rayTracingWin()
 	};
 	static Mode mode = Mode::COLOR;
 
-	static int numBounces = 2, maxNumSamples = 8, samplesPerPixel = 1, currentNumSamples = 0;
+	static int numBounces = 2, maxNumSamples = 8, samplesPerPixel = 1, currentNumSamples = 0, maxNumThreads = 1;
 	static bool resetRayCasting = true, useMT = false;
 
 	static const int w = 360, h = 240;
@@ -484,16 +600,18 @@ SubWindow rayTracingWin()
 		ImGui::PushItemWidth(150);
 		resetRayCasting |= ImGui::SliderInt("num bounces", &numBounces, 1, 3);
 		resetRayCasting |= ImGui::SliderInt("samples per pixel per frame", &samplesPerPixel, 1, 4);
-		resetRayCasting |= ImGui::SliderInt("max samples per pixel", &maxNumSamples, 1, 64);
-		ImGui::PopItemWidth();
+		resetRayCasting |= ImGui::SliderInt("max samples per pixel", &maxNumSamples, 1, 128);
 
 		resetRayCasting |= ImGui::Checkbox(
 			("use multi-threading, " + std::to_string(std::thread::hardware_concurrency()) + " available cores").c_str(),
 			&useMT
 		);
+		ImGui::SameLine();		resetRayCasting |= ImGui::SliderInt("max num threads", &maxNumThreads, 1, 16);
+		ImGui::PopItemWidth();
+
 		std::stringstream s;
 		s << "current num samples per pixel : " << currentNumSamples << " / " << maxNumSamples;
-		ImGui::Text(s.str());
+		ImGui::Text(s);
 	});
 
 	static v2i clicked;
@@ -549,7 +667,7 @@ SubWindow rayTracingWin()
 				int numSamples = currentNumSamples;
 				
 				for (int s = 0; s < samplesPerPixel; ++s) {
-					RayT<float> ray = cam.getRay(v2f(j, h - 1 - i) + 0.5 * (randomVec<float,2>() + v2f(1, 1)));
+					Ray ray = cam.getRay(v2f(j, h - 1 - i) + 0.5 * (randomVec<float,2>() + v2f(1, 1)));
 
 					bool continueRT = true;
 					v3f sampleColor = v3f::Zero();
@@ -587,7 +705,7 @@ SubWindow rayTracingWin()
 							//raycaster.visible(p, lightPosition, dir, distToLight)
 							float distToLight = (lightPosition - p).norm();
 							v3f dir = (lightPosition - p) / distToLight;
-							if (!raycaster.occlusion(Ray(p, dir), 0.01f*distToLight, 0.99f*distToLight)) {
+							if (!raycaster.occlusion(Ray(p, dir), 0.001f*distToLight, 0.999f*distToLight)) {
 								const float diffuse = std::max(dir.dot(n), 0.0f);
 								const float attenuation = std::clamp<float>(1.0f - (distToLight * distToLight) / (2.5f * 2.5f), 0, 1);
 
@@ -601,14 +719,14 @@ SubWindow rayTracingWin()
 								color = color.cwiseProduct(col);
 								sampleColor += color.cwiseProduct(illumination);
 
-								//if (gatherPaths && j == clicked[0] && i == clicked[1]) {
-								//	paths.push_back(ray.origin());
-								//	paths.push_back(p);
-								//	normals.push_back(p);
-								//	normals.push_back(p + 0.1 * n);
-								//	colors.push_back(sampleColor);
-								//	colors.push_back(sampleColor);
-								//}
+								if (gatherPaths && j == clicked[0] && i == clicked[1]) {
+									paths.push_back(ray.origin());
+									paths.push_back(p);
+									normals.push_back(p);
+									normals.push_back(p + 0.1 * n);
+									colors.push_back(sampleColor);
+									colors.push_back(sampleColor);
+								}
 							} else if (mode == Mode::DIRECT_LIGHT) {
 								sampleColor = v3f::Zero();
 								continueRT = false;
@@ -633,7 +751,7 @@ SubWindow rayTracingWin()
 			if (useMT) {			
 				parallelForEach(0, h, [&](int i) {
 					rowJob(i);
-				});
+				}, maxNumThreads);
 			} else {
 				for (int i = 0; i < h; ++i) {
 					rowJob(i);
@@ -683,15 +801,14 @@ SubWindow rayTracingWin()
 
 int main(int argc, char** argv)
 {
-	auto mainWin = Window("GLoops demos");
 
 	auto win_checkers = checker_subwin();
 	auto win_mesh = mesh_viewer_subwin();
 	auto win_mesh_modes = mesh_modes_subwin();
 	auto win_raytracing = rayTracingWin();
 
-	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::GUI, 
-		[&] (const Window& win) {
+	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::DEBUG,
+		[&](const Window& win) {
 		ImGui::Checkbox("texture viewer", &win_checkers.active());
 		ImGui::SameLine();
 		ImGui::Checkbox("mesh viewer", &win_mesh.active());
@@ -701,13 +818,12 @@ int main(int argc, char** argv)
 	});
 
 	mainWin.renderingLoop([&]{
-
-		demoOptions.show(mainWin);
-		
 		win_checkers.show(mainWin);
 		win_mesh.show(mainWin);
 		win_mesh_modes.show(mainWin);
 		win_raytracing.show(mainWin);
+
+		demoOptions.show(mainWin);
 	});
 
 }

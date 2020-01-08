@@ -228,7 +228,7 @@ namespace gloops {
 	{
 		bool pause = false, pauseNext = false;
 
-		bool automaticLayout = true, showImGuiDemo = false, showDebug = false;
+		bool showImGuiDemo = false, showDebug = false;
 
 		while (!shouldClose()) {
 
@@ -338,11 +338,11 @@ namespace gloops {
 
 	void Window::automatic_subwins_layout()
 	{
-		size_t num_render_win = 0, num_gui_win = 0;
+		size_t num_render_win = 0, num_gui_win = 0; 
 		for (const auto& win : subWinsCurrent) {
 			if (win.second.get().getType() == WindowComponent::Type::RENDERING) {
 				++num_render_win;
-			} else {
+			} else if(win.second.get().getType() == WindowComponent::Type::GUI){
 				++num_gui_win;
 			}
 		}
@@ -367,13 +367,14 @@ namespace gloops {
 
 		size_t render_win_id = 0, gui_win_id = 0;
 
+		v2f weights_gui(0, 0), weights_render(0, 0);
 		for (auto& win : subWinsCurrent) {
 			auto& comp = win.second.get();
 			if (comp.getType() == WindowComponent::Type::RENDERING) {
 				v2i coords = v2i(render_win_id % render_grid_size, render_win_id / render_grid_size);
 				drawVP(comp, render_grid_vp, coords, render_grid_res);
 				++render_win_id;
-			} else {
+			} else if (win.second.get().getType() == WindowComponent::Type::GUI) {
 				drawVP(comp, gui_grid_vp, v2i(0, gui_win_id), gui_grid_res);
 				++gui_win_id;
 			}
@@ -467,7 +468,7 @@ namespace gloops {
 			glSev.lvl = SeveriyLevel::UNKNOWN;
 		}
 
-		if ((uint)glSev.lvl < (uint)SeveriyLevel::NOTIFICATION) {
+		if ((uint)glSev.lvl < (uint)SeveriyLevel::HIGH) {
 			return;
 		}
 
@@ -481,9 +482,12 @@ namespace gloops {
 			", severity = " << glSev.str << "\n" << message << std::endl;
 	}
 
-	WindowComponent::WindowComponent(const std::string& name, Type type, const Func& guiFunc)
-		: Viewport(v2d(0, 0), v2d(1, 1)), _name(name), _guiFunc(guiFunc), _type(type)
+	size_t WindowComponent::counter = 0;
+
+	WindowComponent::WindowComponent(const std::string& name, Type type, const Func& guiFunc, const v2f& weights)
+		: Viewport(v2d(0, 0), v2d(1, 1)), _name(name), _guiFunc(guiFunc), _type(type), _weights(weights), id(counter)
 	{
+		++counter;
 	}
 
 	void WindowComponent::show(const Window& win)
@@ -504,7 +508,18 @@ namespace gloops {
 
 			ImGui::PushStyleColor(ImGuiCol_WindowBg, { bg[0], bg[1], bg[2], bg[3] });
 
-			if (ImGui::Begin(_name.c_str(), 0, (_type == Type::RENDERING ? ImGuiWindowFlags_MenuBar : 0) )) {
+			ImGuiWindowFlags imguiWinFlags = 0;
+			if (_type == Type::RENDERING) {
+				imguiWinFlags |= ImGuiWindowFlags_MenuBar;
+			}
+			if (win.automaticLayout && (_type == Type::GUI || _type == Type::RENDERING)) {
+				imguiWinFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus;
+			}
+			if (_type == Type::DEBUG) {
+				imguiWinFlags |= ImGuiWindowFlags_AlwaysAutoResize;
+			}
+
+			if (ImGui::Begin(_name.c_str(), 0, imguiWinFlags)) {
 
 				v2d screenTopLeft(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y);
 				v2d availableSize(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y);
@@ -558,6 +573,16 @@ namespace gloops {
 	{
 		return _type;
 	}
+
+	const v2f& WindowComponent::weights() const
+	{
+		return _weights;
+	}
+
+	//bool WindowComponent::operator<(const WindowComponent& other) const
+	//{
+	//	return id < other.id;
+	//}
 
 	SubWindow::SubWindow(const std::string& name, const v2i& renderingSize,
 		const GuiFunc& guiFunction, const UpdateFunc& upFunc, const RenderingFunc& renderFunc)

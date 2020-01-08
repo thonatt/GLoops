@@ -82,24 +82,31 @@ namespace gloops {
 	const TexParamsFormat TexParamsFormat::RGBA32F = TexParamsFormat(GL_TEXTURE_2D, GL_FLOAT, GL_RGBA32F, GL_RGBA);
 
 
-	Texture::Texture(TexParams params) : TexParams(params)
+	Texture::Texture(const TexParams& params)
+		: TexParams(params)
 	{	
 		size = std::make_shared<Size>();
 		createGPUid();
 	}
 
-	Texture::Texture(int w, int h, int nchannels, TexParams params) : TexParams(params)
+	Texture::Texture(int w, int h, int nchannels, const TexParams& params) 
+		: TexParams(params)
 	{
 		size = std::make_shared<Size>();
 		createGPUid();
 		allocate(w, h, nchannels);
 	}
 
-	Texture Texture::fromPath(const std::string& img_path, TexParams params)
+	Texture Texture::fromPath(const std::string& img_path, const TexParams& params)
 	{
 		Image3b img;
 		img.load(img_path);
 		return Texture(img, params);
+	}
+
+	void Texture::update(const TexParams& params)
+	{
+		static_cast<TexParams&>(*this) = params;
 	}
 
 	void Texture::allocate(int width, int height, int nchannels)
@@ -108,37 +115,51 @@ namespace gloops {
 		(*size)._h = height;
 		(*size)._n = nchannels;
 
-		const int num_lvls_estimate = useMipmap ? static_cast<int>(std::ceil(std::log(std::max(w(), h())))) + 1 : 1;
+		(*size)._lods = useMipmap ?
+			static_cast<int>(std::ceil(std::log(std::max(w(), h())))) + 1 : 1;
 
 		bind();
-		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-		glPixelStorei(GL_PACK_ALIGNMENT, 1);
-		//setFilter();
 
-		//std::cout << " ALLOCATE " << id << " : " << _w << " " << _h << " " << _n << " " << num_lvls_estimate << std::endl;
-
-		gl_check();
-		glTexStorage2D(target, num_lvls_estimate, internal_format, w(), h());
+		glTexStorage2D(target, (*size)._lods, internal_format, w(), h());
 		gl_check();
 	}
 
-	void Texture::uploadToGPU(int xoffset, int yoffset, int width, int height, const void * data)
+	void Texture::uploadToGPU(int lod, int xoffset, int yoffset, int width, int height, const void * data)
 	{
+		setAlignment();
 		bind();
-		glTexSubImage2D(target, 0, xoffset, yoffset, width, height, format, type, data);
+		glTexSubImage2D(target, lod, xoffset, yoffset, width, height, format, type, data);
 	}
 
 	void Texture::generateMipmaps() const
 	{
 		bind();
 		glGenerateMipmap(target);
+		dirtyMipmap = false;
 	}
 
 	void Texture::setWrap() const
 	{
+		bind();
 		glTexParameteri(target, GL_TEXTURE_WRAP_S, wrap_s);
 		glTexParameteri(target, GL_TEXTURE_WRAP_T, wrap_t);
 		glTexParameteri(target, GL_TEXTURE_WRAP_R, wrap_r);
+		dirtyWrap = false;
+	}
+
+	void Texture::setAlignment() const
+	{
+		bind();
+		glPixelStorei(GL_PACK_ALIGNMENT, pack);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, unpack);
+		dirtyAlignment = false;
+	}
+
+	void Texture::setSwizzling() const
+	{
+		bind();
+		glTexParameteriv(target, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask.data());
+		dirtySwizzle = false;
 	}
 
 	void Texture::bind() const
@@ -168,6 +189,11 @@ namespace gloops {
 		return (*size)._n;
 	}
 
+	int Texture::nLods() const
+	{
+		return (*size)._lods;
+	}
+
 	const TexParams& Texture::getParams() const
 	{
 		return static_cast<const TexParams&>(*this);
@@ -187,8 +213,10 @@ namespace gloops {
 
 	void Texture::setFilter() const
 	{
+		bind();
 		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, min_filter);
 		glTexParameteri(target, GL_TEXTURE_MAG_FILTER, mag_filter);	
+		dirtyFilter = false;
 	}
 
 	void Texture::check() const
@@ -199,15 +227,19 @@ namespace gloops {
 		}
 
 		if (dirtyFilter) {
-			bind();
 			setFilter();
-			dirtyFilter = false;
 		}
 		
 		if (dirtyWrap) {
-			bind();
 			setWrap();
-			dirtyWrap = false;
+		}
+
+		if (dirtyAlignment) {
+			setAlignment();
+		}
+
+		if (dirtySwizzle) {
+			setSwizzling();
 		}
 
 		if (dirtyMipmap && useMipmap) {
@@ -252,18 +284,12 @@ namespace gloops {
 		_w = width;
 		_h = height;
 
-		//releaseDepth();
 		createDepth(_w, _h);
 
-		gl_check();
-
 		for (auto& attachment : attachments) {
-			const auto& currentTex = attachment.second;
-			
+			const auto& currentTex = attachment.second;	
 			Texture tex = Texture(_w, _h, currentTex.n(), currentTex.getParams());
-			gl_check();
 			setAttachment(tex, attachment.first, 0);
-			gl_check();
 		}
 
 		gl_framebuffer_check(GL_FRAMEBUFFER);
@@ -550,7 +576,7 @@ namespace gloops {
 			const int tilesize_i = std::min(rows_per_tile, tex_ptr->h() - offset_i);
 			const void* data = img_ptr->data() + rows_per_tile * static_cast<size_t>(bytes_per_row)* gpu_tile_id;
 			
-			tex_ptr->uploadToGPU(0, offset_i, tex_ptr->w(), tilesize_i, data);
+			tex_ptr->uploadToGPU(0, 0, offset_i, tex_ptr->w(), tilesize_i, data);
 
 			++gpu_tile_id;
 			if (gpu_tile_id == num_tiles) {
@@ -604,6 +630,13 @@ namespace gloops {
 		return *this;
 	}
 
+	TexParams& TexParams::setMinFilter(GLint v)
+	{
+		min_filter = v;
+		dirtyFilter = true;
+		return *this;
+	}
+
 	TexParams& TexParams::disableMipmap()
 	{
 		useMipmap = false;
@@ -643,6 +676,27 @@ namespace gloops {
 		wrap_s = parameter;
 		wrap_t = parameter;
 		dirtyWrap = true;
+		return *this;
+	}
+
+	TexParams& TexParams::setPackAlignment(GLint value)
+	{
+		pack = value;
+		dirtyAlignment = true;
+		return *this;
+	}
+
+	TexParams& TexParams::setUnpackAlignment(GLint value)
+	{
+		unpack = value;
+		dirtyAlignment = true;
+		return *this;
+	}
+
+	TexParams& TexParams::setSwizzleMask(const std::array<GLint, 4>& mask)
+	{
+		swizzleMask = mask;
+		dirtySwizzle = true;
 		return *this;
 	}
 

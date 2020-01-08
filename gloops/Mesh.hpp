@@ -220,6 +220,8 @@ namespace gloops {
 		static MeshGL getCubeLines(const Box& box);
 		static MeshGL getAxis();
 		static MeshGL fromEndPoints(const std::vector<v3f>& pts);
+		static MeshGL fromPoints(const std::vector<v3f>& pts);
+		static MeshGL quad(const v3f& center, const v3f& semiDiagonalA, const v3f& semiDiagonalB, const v2f& uvs_tl = { 0,0 }, const v2f uvs_br = { 1,1 });
 
 	private:
 		size_t size_of_vertex_data() const;
@@ -256,7 +258,7 @@ namespace gloops {
 	template<typename F>
 	inline void Mesh::addGeometryCallback(F&& f) const
 	{
-		geometryCallbacks.push_back(std::forward<F>(f));
+		geometryCallbacks->push_back(std::forward<F>(f));
 	}
 
 	template<typename T>
@@ -265,7 +267,7 @@ namespace gloops {
 		Mesh::setCPUattribute(name, data);
 
 		attributes_mapping[name] = VertexAttribute(
-			getAttribute(name), location
+			getAttribute<T>(name), location
 		);
 
 		if (numElements == 0) {

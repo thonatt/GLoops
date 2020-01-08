@@ -168,7 +168,7 @@ namespace gloops {
 	{
 		mvp = eye.viewProj() * mesh.model();
 		color = _color;
-		shader_map[Name::BASIC].use();
+		shader_map.at(Name::BASIC).use();
 		mesh.draw();
 	}
 
@@ -179,7 +179,7 @@ namespace gloops {
 		rotation = mesh.transform().rotation();
 		cam_pos = eye.position();
 		light_pos = light_position;
-		shader_map[Name::PHONG].use();
+		shader_map.at(Name::PHONG).use();
 		mesh.draw();
 	}
 
@@ -191,16 +191,27 @@ namespace gloops {
 	void ShaderCollection::renderColoredMesh(const Cameraf& eye, const MeshGL& mesh)
 	{
 		mvp = eye.viewProj() * mesh.model();
-		shader_map[Name::COLORED_MESH].use();
+		shader_map.at(Name::COLORED_MESH).use();
 		mesh.draw();
 	}
 
-	void ShaderCollection::renderTexturedMesh(const Cameraf& eye, const MeshGL& mesh, const Texture& tex, float _alpha)
+	void ShaderCollection::renderTexturedMesh(const Cameraf& eye, const MeshGL& mesh, const Texture& tex, float _alpha, float _lod)
 	{
 		mvp = eye.viewProj() * mesh.model();
 		alpha = _alpha;
+		lod = _lod;
 		tex.bindSlot(GL_TEXTURE0);
-		shader_map[Name::TEXTURED_MESH].use();
+		shader_map.at(Name::TEXTURED_MESH).use();
+		mesh.draw();
+	}
+
+	void ShaderCollection::renderTexturedMesh(const MeshGL& mesh, const Texture& tex, float _alpha, float _lod )
+	{
+		mvp = m4f::Identity() * mesh.model();
+		alpha = _alpha;
+		lod = _lod;
+		tex.bindSlot(GL_TEXTURE0);
+		shader_map.at(Name::TEXTURED_MESH).use();
 		mesh.draw();
 	}
 
@@ -209,7 +220,7 @@ namespace gloops {
 		mvp = eye.viewProj() * mesh.model();
 		color = _color;
 		size = _size;
-		shader_map[Name::NORMALS].use();
+		shader_map.at(Name::NORMALS).use();
 		mesh.draw();
 	}
 
@@ -351,21 +362,23 @@ namespace gloops {
 			)",
 			R"(
 				#version 420
-
 				layout(location = 0) out vec4 color;
-
 				layout(binding = 0) uniform sampler2D tex;
 
 				in vec2 out_uv;
-				uniform float alpha = 1.0;
+				uniform float alpha = 1.0, lod = -1;
 
 				void main(){
-					color = vec4(texture(tex, out_uv).rgb, alpha);
+					if(lod < 0) {
+						color = vec4(texture(tex, out_uv).rgb, alpha);
+					} else {
+						color = vec4(textureLod(tex, out_uv, lod).rgb, alpha);
+					}				
 				}
 			)"
 		);
 		//shader.initFromPaths(shader_folder + "texturedMesh.vert", shader_folder + "texturedMesh.frag");
-		shader.addUniforms(mvp, alpha);
+		shader.addUniforms(mvp, alpha, lod);
 		shader_map[Name::TEXTURED_MESH] = shader;
 	}
 

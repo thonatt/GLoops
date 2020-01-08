@@ -7,6 +7,8 @@
 #include <atomic>
 #include <mutex>
 #include <map>
+#include <filesystem>
+#include <array>
 
 namespace gloops {
 
@@ -85,7 +87,8 @@ namespace gloops {
 			uchar* data_ptr = stbiImageLoad(path, w, h, n);
 
 			if (n != N) {
-				std::cout << " wrong number of channels when loading " << path << "\n" <<
+				std::cout << " wrong number of channels when loading " <<
+					std::filesystem::absolute(std::filesystem::path(path)).string() << "\n" <<
 					" expecting " << N << " channels but received " << n << std::endl;
 				return;
 			}
@@ -170,14 +173,14 @@ namespace gloops {
 		}
 
 		template<typename U, int M>
-		Image<float, (N>M ? N : M)> operator*(const Vec<U, M>& other) const {
+		Image<float, (N > M ? N : M)> operator*(const Vec<U, M>& other) const {
 			constexpr int C = (N > M ? N : M);
 			Image<float, C> out(w(), h());
 			for (int i = 0; i < h(); ++i) {
 				for (int j = 0; j < w(); ++j) {
 					for (int c = 0; c < C; ++c) {
-						out.pixel(j, i)[c] = pixel(j, i)[std::min(c, N)] * other[std::min(c, M)];
-					}				
+						out.pixel(j, i)[c] = pixel(j, i)[std::min(c, N - 1)] * other[std::min(c, M - 1)];
+					}
 				}
 			}
 			return out;
@@ -366,6 +369,14 @@ namespace gloops {
 			return !(*this == other);
 		}
 
+		GLint getMagFilter() const {
+			return mag_filter;
+		}
+
+		GLint getMinFilter() const {
+			return min_filter;
+		}
+
 	public:
 		GLint mag_filter = GL_LINEAR, min_filter = GL_LINEAR_MIPMAP_LINEAR;
 		mutable bool dirtyFilter = false;
@@ -394,16 +405,60 @@ namespace gloops {
 		bool operator!=(const TexParamsWrap& other) const {
 			return !(*this == other);
 		}
+
+		GLint getWrapS() const {
+			return wrap_s;
+		}
+
+		GLint getWrapT() const {
+			return wrap_t;
+		}
+
+		GLint getWrapR() const {
+			return wrap_r;
+		}
+
 	protected:
 		GLint wrap_s = GL_REPEAT, wrap_t = GL_REPEAT, wrap_r = GL_REPEAT;
 		mutable bool dirtyWrap = true;
 	};
 
+	class TexParamsSwizzleMask {
+	public:
+		bool operator==(const TexParamsSwizzleMask& other) const {
+			return swizzleMask == other.swizzleMask;
+		}
+		bool operator!=(const TexParamsSwizzleMask& other) const {
+			return !(*this == other);
+		}
+		const std::array<GLint, 4>& getSwizzleMask() const {
+			return swizzleMask;
+		}
+
+	protected:
+		std::array<GLint, 4> swizzleMask = { GL_RED, GL_GREEN, GL_BLUE, GL_ALPHA };
+		mutable bool dirtySwizzle = true;
+	};
+
+	class TexParamsAlignement {
+	public:
+		bool operator ==(const TexParamsAlignement& other) const {
+			return pack == other.pack && pack && other.unpack;
+		}
+		bool operator!=(const TexParamsAlignement& other) const {
+			return !(*this == other);
+		}
+	protected:
+		GLint pack = 1, unpack = 1;
+		mutable bool dirtyAlignment = true;
+	};
 	class TexParams :
 		public TexParamsFormat,
 		public TexParamsFilter,
 		public TexParamsMipmap,
-		public TexParamsWrap
+		public TexParamsWrap,
+		public TexParamsAlignement,
+		public TexParamsSwizzleMask
 	{
 	public:
 		TexParams() = default;
@@ -414,6 +469,8 @@ namespace gloops {
 		TexParams& setType(GLenum t);
 
 		TexParams& setMagFilter(GLint v);
+		TexParams& setMinFilter(GLint v);
+
 		TexParams& disableMipmap();
 		TexParams& enableMipmap();
 
@@ -421,6 +478,11 @@ namespace gloops {
 		TexParams& setWrapT(GLint parameter);
 		TexParams& setWrapR(GLint parameter);
 		TexParams& setWrapAll(GLint parameter);
+
+		TexParams& setPackAlignment(GLint value);
+		TexParams& setUnpackAlignment(GLint value);
+
+		TexParams& setSwizzleMask(const std::array<GLint, 4>& mask);
 
 		TexParams(const TexParamsFormat& format) : TexParamsFormat(format) {
 		}
@@ -430,7 +492,8 @@ namespace gloops {
 				static_cast<const TexParamsFormat&>(*this) == other &&
 				static_cast<const TexParamsFilter&>(*this) == other &&
 				static_cast<const TexParamsMipmap&>(*this) == other &&
-				static_cast<const TexParamsWrap&>(*this) == other;
+				static_cast<const TexParamsWrap&>(*this) == other &&
+				static_cast<const TexParamsAlignement&>(*this) == other;
 		}
 		bool operator!=(const TexParams& other) const {
 			return !(*this == other);
@@ -466,20 +529,22 @@ namespace gloops {
 	public:
 		using Ptr = std::shared_ptr<Texture>;
 
-		Texture(TexParams params = {});
+		Texture(const TexParams& params = {});
 
-		Texture(int w, int h, int nchannels, TexParams params = {});
+		Texture(int w, int h, int nchannels, const TexParams& params = {});
 
-		static Texture fromPath(const std::string& img_path, TexParams params = {});
-
-		template<typename T>
-		Texture(const T& t, TexParams params = DefaultTexParams<T>{});
+		static Texture fromPath(const std::string& img_path, const TexParams& params = {});
 
 		template<typename T>
-		void update(const T& t, TexParams params = DefaultTexParams<T>{});
+		Texture(const T& t, const TexParams& params = DefaultTexParams<T>{});
+
+		void update(const TexParams& params);
+
+		template<typename T>
+		void update(const T& t, const TexParams& params = DefaultTexParams<T>{});
 
 		void allocate(int width, int height, int nchannels);
-		void uploadToGPU(int xoffset, int yoffset, int width, int height, const void* data);
+		void uploadToGPU(int lod, int xoffset, int yoffset, int width, int height, const void* data);
 
 		void bind() const;
 		void bindSlot(GLuint slot) const;
@@ -487,6 +552,7 @@ namespace gloops {
 		int w() const;
 		int h() const;
 		int n() const;
+		int nLods() const;
 
 		const TexParams& getParams() const;
 
@@ -500,6 +566,8 @@ namespace gloops {
 		void setFilter() const;
 		void generateMipmaps() const;
 		void setWrap() const;
+		void setAlignment() const;
+		void setSwizzling() const;
 
 		void createGPUid();
 		//void releaseGPUmemory();
@@ -508,7 +576,7 @@ namespace gloops {
 		void createFromImage(const ImageInfos<T>& img);
 
 		struct Size {
-			int _w, _h, _n;
+			int _w, _h, _n, _lods = -1;
 		};
 		
 		std::shared_ptr<Size> size;
@@ -641,7 +709,7 @@ namespace gloops {
 	};
 
 	template<typename T>
-	inline Texture::Texture(const T& t, TexParams params)
+	inline Texture::Texture(const T& t, const TexParams& params)
 		: Texture(params)
 	{
 		createFromImage(ImageInfos<T>(t));
@@ -651,11 +719,11 @@ namespace gloops {
 	inline void Texture::createFromImage(const ImageInfos<T>& img)
 	{
 		allocate(img.w(), img.h(), img.n());
-		uploadToGPU(0, 0, w(), h(), img.data());
+		uploadToGPU(0, 0, 0, w(), h(), img.data());
 	}
 
 	template<typename T>
-	inline void Texture::update(const T& t, TexParams _params)
+	inline void Texture::update(const T& t, const TexParams& _params)
 	{
 		ImageInfos<T> infos(t);
 		if (w() != infos.w() || h() != infos.h() || n() != infos.n() || getParams() != _params) {
@@ -665,7 +733,7 @@ namespace gloops {
 		} else {
 			check();
 			bind();
-			uploadToGPU(0, 0, infos.w(), infos.h(), infos.data());
+			uploadToGPU(0, 0, 0, infos.w(), infos.h(), infos.data());
 		}
 	}
 

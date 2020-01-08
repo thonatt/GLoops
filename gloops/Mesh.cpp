@@ -779,6 +779,41 @@ namespace gloops {
 		return out;
 	}
 
+	MeshGL MeshGL::fromPoints(const std::vector<v3f>& pts)
+	{
+		MeshGL out;
+		out.setVertices(pts);
+		out.mode = GL_POINT;
+		return out;
+	}
+
+	MeshGL MeshGL::quad(const v3f& center, const v3f& semiDiagonalA, const v3f& semiDiagonalB, const v2f& uvs_tl, const v2f uvs_br)
+	{
+		static const Mesh::Triangles quadTriangles = {
+			{ 0,1,2 }, { 0,2,3 }
+		};
+
+		static std::vector<v3f> vertices(4);
+		static Mesh::UVs uvs(4);
+
+		vertices = {
+			center - semiDiagonalA, center - semiDiagonalB,
+			center + semiDiagonalA, center + semiDiagonalB,
+		};
+
+		uvs = {
+			uvs_tl, { uvs_br[0], uvs_tl[1] },
+			uvs_br, { uvs_tl[0], uvs_br[1] },
+		};
+
+		MeshGL out;
+		out.setVertices(vertices);
+		out.setTriangles(quadTriangles);
+		out.setUVs(uvs);
+
+		return out;
+	}
+
 	size_t VertexAttribute::copyDataToBuffer(char* dst) const
 	{
 		std::memcpy(dst, pointer, total_num_bytes);

@@ -387,26 +387,14 @@ namespace gloops {
 
 		MeshGL getQuad(T dist) const
 		{
-			static const Mesh::Triangles quadTriangles = {
-				{ 0,1,2 }, { 0,2,3 }
-			};
-			static const Mesh::UVs quadUVs = {
-				{ 0,0 }, { 0,1 }, { 1,1 }, { 1,0 }
-			};
-
-			static std::vector<v3f> dirs(4);
-
-			static Mesh::Vertices vertices(4);
+			static Mesh::Vertices vertices(3);
 			auto corners_rays = getCornersRays();
-			for (int c = 0; c < 4; ++c) {
+			for (int c = 0; c < 3; ++c) {
 				vertices[c] = corners_rays[c].pointAt(dist);
 			}
 
-			MeshGL out;
-			out.setVertices(vertices);
-			out.setTriangles(quadTriangles);
-			out.setUVs(quadUVs);
-			return out;
+			const v3f center = 0.5 * (vertices[0] + vertices[2]);
+			return MeshGL::quad(center, vertices[2] - center, vertices[1] - center);
 		}
 
 		MeshGL getCamStub(T near, T far) const
