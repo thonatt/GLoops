@@ -38,7 +38,7 @@ namespace gloops {
 
 	class Window;
 
-	class WindowComponent : public Viewport
+	class WindowComponent : public Viewportd
 	{
 
 	public:
@@ -51,7 +51,7 @@ namespace gloops {
 		void show(const Window& win);
 		bool& isActive();
 
-		void resize(const Viewport& vp);
+		void resize(const Viewportd& vp);
 		const std::string& name() const;
 
 		//const Viewport& viewport() const;
@@ -178,7 +178,7 @@ namespace gloops {
 		WindowComponent& getGuiComponent();
 
 	private:
-		void fitContent(v2f& outOffset, v2f& outSize, const v2f& vpSize, const v2f& availableSize);
+		void fitContent(v2d& outOffset, v2d& outSize, const v2d& vpSize, const v2d& availableSize);
 		std::string gui_text(const std::string& str) const;
 		void menuBar();
 		void debugWin();

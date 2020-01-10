@@ -6,25 +6,67 @@
 
 namespace gloops {
 
-	class Viewport : public BBox2d {
-		
+	template<typename T>
+	class ViewportT : public Eigen::AlignedBox<T, 2> {
+
 	public:
-		using BBox2d::BBox2d;
+		using Box2D = Eigen::AlignedBox<T, 2>;
+		using Box2D::Box2D;
+		using Box2D::max;
+		using Box2D::min;
 
-		void gl() const;
+		void gl() const {
+			glViewport(static_cast<GLint>(left()), static_cast<GLint>(top()),
+				static_cast<GLsizei>(width()), static_cast<GLsizei>(height()));
+		}
 
-		double width() const;
-		double height() const;
+		T width() const {
+			return right() - left();
+		}
 
-		double top() const;
-		double bottom() const;
-		double left() const;
-		double right() const;
+		T height() const {
+			return bottom() - top();
+		}
 
-		bool checkNan() const;
+		T top() const {
+			return min()[1];
+		}
+
+		T bottom() const {
+			return max()[1];
+		}
+
+		T left() const {
+			return min()[0];
+		}
+
+		T right() const {
+			return max()[0];
+		}
+
+		template<typename U>
+		ViewportT<U> cast() const {
+			return ViewportT<U>(min().template cast<U>(), max().template cast<U>());
+		}
+
+		bool checkNan() const {
+			if (min().hasNaN() || max().hasNaN()) {
+				std::cout << "vp is nan " << min().transpose() << " -> " << max().transpose() << std::endl;
+				return false;
+			}
+			return true;
+		}
 	};
 
-	std::ostream& operator<<(std::ostream& s, const Viewport& vp);
+	template<typename T>
+	std::ostream& operator<<(std::ostream& s, const ViewportT<T>& vp)
+	{
+		return s << vp.min().transpose() << " " << vp.max().transpose();
+	}
+
+	using Viewportd = ViewportT<double>;
+	using Viewportf = ViewportT<float>;
+	using Viewporti = ViewportT<int>;
 
 	enum class InputType { KEYBOARD, MOUSE };
 
@@ -40,6 +82,7 @@ namespace gloops {
 		bool keyPressed(int key) const;
 		bool keyReleased(int key) const;
 
+		bool buttonActive(int button) const;
 		bool buttonClicked(int button) const;
 		bool buttonUnclicked(int button) const;
 
@@ -54,10 +97,10 @@ namespace gloops {
 
 		const double & scrollY() const;
 
-		const Viewport & viewport() const;
-		Viewport& viewport();
+		const Viewportd & viewport() const;
+		Viewportd& viewport();
 
-		Input subInput(const Viewport& vp, bool forceEmpty = false) const;
+		Input subInput(const Viewportd& vp, bool forceEmpty = false) const;
 
 		void guiInputDebug() const;
 
@@ -69,7 +112,7 @@ namespace gloops {
 		KeysStatus keyStatus = {}, keyStatusPrevious = {};
 		MouseStatus mouseStatus = {}, mouseStatusPrevious = {};
 		v2d _mousePosition, _mouseScroll;
-		Viewport _viewport;
+		Viewportd _viewport;
 	};
 
 	template<typename T>

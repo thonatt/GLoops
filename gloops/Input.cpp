@@ -17,6 +17,11 @@ namespace gloops {
 		return keyStatus[key] == GLFW_RELEASE && (keyStatusPrevious[key] == GLFW_PRESS || keyStatusPrevious[key] == GLFW_REPEAT);
 	}
 
+	bool Input::buttonActive(int button) const
+	{
+		return mouseStatus[button] == GLFW_PRESS || mouseStatus[button] == GLFW_REPEAT;
+	}
+
 	bool Input::buttonClicked(int button) const
 	{
 		return mouseStatus[button] == GLFW_PRESS && mouseStatusPrevious[button] == GLFW_RELEASE;
@@ -37,17 +42,17 @@ namespace gloops {
 		return _mouseScroll[1];
 	}
 
-	const Viewport& Input::viewport() const
+	const Viewportd& Input::viewport() const
 	{
 		return _viewport;
 	}
 
-	Viewport& Input::viewport()
+	Viewportd& Input::viewport()
 	{
 		return _viewport;
 	}
 
-	Input Input::subInput(const Viewport& vp, bool forceEmpty) const
+	Input Input::subInput(const Viewportd& vp, bool forceEmpty) const
 	{
 		Input sub = *this;
 		sub._viewport = vp;
@@ -96,55 +101,5 @@ namespace gloops {
 	//{
 	//	return pos.cwiseQuotient(diagonal());
 	//}
-
-	void Viewport::gl() const
-	{
-		glViewport(static_cast<GLint>(left()), static_cast<GLint>(top()),
-			static_cast<GLsizei>(width()), static_cast<GLsizei>(height()));
-	}
-
-	double Viewport::width() const
-	{
-		return right() - left();
-	}
-
-	double Viewport::height() const
-	{
-		return bottom() - top();
-	}
-
-	double Viewport::top() const
-	{
-		return min()[1];
-	}
-
-	double Viewport::bottom() const
-	{
-		return max()[1];
-	}
-
-	double Viewport::left() const
-	{
-		return min()[0];
-	}
-
-	double Viewport::right() const
-	{
-		return max()[0];
-	}
-
-	bool Viewport::checkNan() const
-	{
-		if (min().hasNaN() || max().hasNaN()) {
-			std::cout << "vp is nan " << min().transpose() << " -> " << max().transpose() << std::endl;		
-			return false;
-		}
-		return true;
-	}
-
-	std::ostream& operator<<(std::ostream& s, const Viewport& vp)
-	{
-		return s << vp.min().transpose() << " " << vp.max().transpose();
-	}
 
 }

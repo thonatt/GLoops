@@ -93,7 +93,7 @@ namespace ImGui {
 	}
 
 	inline void TextColored(const ::std::string& s, const gloops::v4f& c) {
-		ImGui::TextColored({ c[0],c[1],c[2],c[3] }, "%s", s.c_str());
+		ImGui::TextColored(ImVec4(c[0], c[1], c[2], c[3]), "%s", s.c_str());
 	}
 
 	inline float TitleHeight() {
@@ -128,7 +128,7 @@ namespace gloops {
 
 		template<typename Generator, typename Destructor>
 		GLptr(Generator&& generator, Destructor&& destructor) {
-			_id = std::shared_ptr<GLuint>(new GLuint(), destructor);
+			_id = std::shared_ptr<GLuint>(new GLuint(), std::forward<Destructor>(destructor));
 			generator(_id.get());
 		}
 
@@ -194,7 +194,7 @@ namespace gloops {
 		}
 
 		const int numCores = std::thread::hardware_concurrency();
-		const int numThreads = std::min(max_num_threads, std::max(numCores - 1, 1));
+		const int numThreads = std::clamp(max_num_threads, 1, std::max(numCores - 1, 1));
 		const int numJobsPerThread = numJobs / numThreads + 1;
 
 		std::cout << numJobs << " " << numJobsPerThread << std::endl;

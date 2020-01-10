@@ -790,7 +790,7 @@ namespace gloops {
 	MeshGL MeshGL::quad(const v3f& center, const v3f& semiDiagonalA, const v3f& semiDiagonalB, const v2f& uvs_tl, const v2f uvs_br)
 	{
 		static const Mesh::Triangles quadTriangles = {
-			{ 0,1,2 }, { 0,2,3 }
+			{ 0,2,1 }, { 0,3,2 }
 		};
 
 		static std::vector<v3f> vertices(4);

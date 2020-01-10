@@ -1,5 +1,6 @@
 #include "Texture.hpp"
 #include "Debug.hpp"
+#include "Input.hpp"
 
 #include <iostream>
 #include <chrono>
@@ -324,11 +325,27 @@ namespace gloops {
 		glViewport(0, 0, w(), h());
 	}
 
+	void Framebuffer::bindDraw(const Viewportd& vp) const
+	{
+		bind();
+		for (const auto& attachment : attachments) {
+			glDrawBuffers(1, &attachment.first);
+		}
+		vp.gl();
+	}
+
 	void Framebuffer::bindDraw(GLenum attachment) const
 	{
 		bind();
 		glDrawBuffers(1, &attachment);
 		glViewport(0, 0, w(), h());
+	}
+
+	void Framebuffer::bindDraw(GLenum attachment, const Viewportd& vp) const
+	{
+		bind();
+		glDrawBuffers(1, &attachment);
+		vp.gl();
 	}
 
 	void Framebuffer::bindRead(GLenum attachment) const

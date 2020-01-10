@@ -30,7 +30,7 @@ struct ModeData {
 static std::map<TexMode, ModeData> modes = {
 	{ TexMode::CHECKERS, { checkers_tex, "Checkers" }},
 	{ TexMode::PERLIN, { perlinTex, "Perlin noise" }},
-	{ TexMode::KITTEN, { kittenTex, "Kitten jpg" }},
+	{ TexMode::KITTEN, { kittenTex, "Kitten png" }},
 };
 
 static TexMode currentMode = TexMode::KITTEN;
@@ -70,6 +70,13 @@ SubWindow checker_subwin()
 		{ GL_LINEAR_MIPMAP_LINEAR , "L_MIPMAP_L" },
 	};
 
+	static const std::map<GLenum, std::string> channels = {
+		{ GL_RED , "GL_RED" },
+		{ GL_GREEN , "GL_GREEN" },
+		{ GL_BLUE , "GL_BLUE" },
+	};
+
+	static v2f texCenter = v2f(0, 0), previousCenter = v2f(0,0), clickedPosition = v2f(0, 0);
 	static float lod = 0, zoomLevel = 1.3f;
 
 	auto sub = SubWindow("Texture viewer",
@@ -91,18 +98,13 @@ SubWindow checker_subwin()
 		{
 		case TexMode::PERLIN: {
 			static v3f colA = { 0,0,0 }, colB = { 1,1,1 };
-			static bool colChanged = true, seedChanged = true;
+			static bool colChanged = true;
 			static Image1f perlin;
 			
 			ImGui::Separator();
-			if (ImGui::Button("Shuffle")) {
-				seedChanged = true;
-			}
-			colChanged |= seedChanged;
-
-			if (seedChanged) {
+			if (ImGui::Button("Shuffle") || colChanged) {
 				perlin = 0.5 * perlinNoise(80, 80, 5) + 0.5;
-				seedChanged = false;
+				colChanged = true;
 			}
 
 			ImGui::SameLine();
@@ -129,7 +131,7 @@ SubWindow checker_subwin()
 		}
 
 		static bool fixLods = false;
-		ImGui::ItemWithSize(150, [&] { ImGui::SliderFloat("zoom", &zoomLevel, 0.6f, 5.0f); });
+		ImGui::ItemWithSize(150, [&] { ImGui::SliderFloat("zoom", &zoomLevel, 0.6f, 10.0f); });
 		ImGui::SameLine();
 		if (ImGui::Checkbox("Fixed lod", &fixLods)) {
 			lod = fixLods ? 0.0f : -1.0f;
@@ -164,20 +166,38 @@ SubWindow checker_subwin()
 				texParams.setSwizzleMask(mask);
 			}
 		});
+		for (int c = 0; c < 3; ++c) {
+			ImGui::SameLine();
+			ImGui::Text(channels.at(mask[c]));
+		}
 		
 	},
-		[&](const Input& i) 
+		[&](const Input& i)
 	{
 		doReadback = i.insideViewport();
 		uv = i.mousePosition().cwiseQuotient(i.viewport().diagonal());
 		currentTex().update(texParams);
+
+		zoomLevel *= std::pow(1.1f, -(float)i.scrollY());
+		zoomLevel = std::clamp(zoomLevel, 0.6f, 10.0f);
+
+		const v2f mPos = (2 * zoomLevel - 1.0f) * i.mousePosition().cwiseQuotient(i.viewport().diagonal()).template cast<float>();
+		if (i.buttonClicked(GLFW_MOUSE_BUTTON_RIGHT)) {
+			clickedPosition = mPos;
+			previousCenter = texCenter;
+		}
+		if (i.buttonActive(GLFW_MOUSE_BUTTON_RIGHT)) {
+			texCenter = previousCenter + clickedPosition - mPos;
+		}
 	},
-		[&](Framebuffer& dst) 
+		[&](Framebuffer& dst)
 	{
 		//dst.blitFrom(modes.at(currentMode).tex, GL_COLOR_ATTACHMENT0, filter);
 
 		static MeshGL screenQuad;
-		screenQuad = MeshGL::quad({ 0,0,0 }, { 1,1,0 }, { -1,1, 0 }, { 1.0f - zoomLevel, zoomLevel }, { zoomLevel, 1.0f - zoomLevel });
+		const v2f uvCenter = texCenter;
+		const v2f tl = uvCenter + v2f(1.0f - zoomLevel, zoomLevel), br = uvCenter + v2f(zoomLevel, 1.0f - zoomLevel);
+		screenQuad = MeshGL::quad({ 0,0,0 }, { 1,1,0 }, { -1,1, 0 }, tl, br);
 
 		dst.bindDraw();
 		shaders.renderTexturedMesh(screenQuad, currentTex(), 1.0f, lod);
@@ -187,7 +207,7 @@ SubWindow checker_subwin()
 			coords.y() = dst.h() - 1 - coords.y();
 
 			const int r = 10;
-			v2i xy = coords - v2i(r, r);
+			const v2i xy = coords - v2i(r, r);
 
 			Image4b tmp(2 * r + 1, 2 * r + 1);
 			tmp.setTo(v4b(0, 0, 0, 0));
@@ -196,6 +216,11 @@ SubWindow checker_subwin()
 
 			ImGui::BeginTooltip();
 			ImGui::Image(zoom.getId(), { 100, 100 }, { 0,1 }, { 1,0 });
+			std::stringstream s;
+			s << "click " << clickedPosition.transpose() << std::endl;
+			s << "texcenter " << texCenter.transpose() << std::endl;
+			s << "prev " << previousCenter.transpose() << std::endl;
+			ImGui::Text(s);
 			ImGui::EndTooltip();
 		}
 
@@ -205,96 +230,6 @@ SubWindow checker_subwin()
 	sub.updateWhenNoFocus = true;
 
 	return sub;
-}
-
-SubWindow mesh_viewer_subwin()
-{
-	static MeshGL
-		sphere = Mesh::getSphere().setScaling(2.0f),
-		cube = Mesh::getCube(BBox3f(v3f(-3, -3, -3), v3f(-1, -1, -1))),
-		axis = MeshGL::getAxis();
-
-	static Raycaster raycaster;
-	raycaster.addMesh(sphere, cube);
-
-	static Trackballf tb = Trackballf::fromMesh(sphere, cube);
-	tb.setRaycaster(raycaster);
-
-	static ShaderCollection shaders;
-
-	static v4f color = { 1.0f, 0.0f, 1.0f, 0.5f };
-
-	static std::map<std::string, MeshGL> meshes;
-	meshes["cube"] = cube;
-	meshes["sphere"] = sphere;
-	meshes["axis"] = axis;
-
-	SubWindow mesh_viewer("Mesh viewer", v2i(400, 400));
-	
-	mesh_viewer.setGuiFunction([&]
-	{
-		colPicker("sphere color : ", &color[0]);
-		ImGui::SameLine();
-		colPicker("clear color", &mesh_viewer.clearColor[0], ImGuiColorEditFlags_NoAlpha);
-		colPicker("background color", &mesh_viewer.getRenderComponent().backgroundColor[0], ImGuiColorEditFlags_NoAlpha);
-		ImGui::SameLine();
-		colPicker("gui background color", &mesh_viewer.getGuiComponent().backgroundColor[0], ImGuiColorEditFlags_NoAlpha);
-
-		ImGui::Separator();
-
-		if (ImGui::CollapsingHeader("meshes data")) {
-			ImGui::Separator();
-			for (const auto& mesh : meshes) {
-				std::stringstream header;
-				header << mesh.first << "\n";
-
-				const auto& m = mesh.second;
-				header << "  num vertices : " << m.getVertices().size() << "\n";
-				header << "  num triangles : " << m.getTriangles().size() << "\n";
-				ImGui::Text(header);
-
-				if (ImGui::TreeNode(("vertex data attributes##" + mesh.first).c_str())) {
-					for (const auto& attribute : m.getAttributes()) {
-						std::stringstream s;
-						const auto& att = attribute.second;
-						s << "location : " << att.index << "\n";
-						s << "  nchannels : " << att.num_channels << "\n";
-						s << "  type : " << att.type << "\n";
-						s << "  stride : " << att.stride << "\n";
-						s << "  normalized : " << std::boolalpha << (bool)att.normalized << "\n";
-						s << "  data ptr : " << att.pointer << "\n";
-						ImGui::Text(s);
-					}
-					ImGui::TreePop();
-				}
-				ImGui::Separator();
-			}
-		}
-	});
-
-	mesh_viewer.setUpdateFunction([&](const Input& i){
-		tb.update(i);
-	});
-
-	mesh_viewer.setRenderingFunction([&](Framebuffer& dst)
-	{
-		dst.bindDraw();
-
-		Cameraf eye = tb.getCamera();
-
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-		shaders.renderColoredMesh(eye, axis);
-
-		shaders.renderPhongMesh(eye, cube);
-
-		shaders.renderBasicMesh(eye, sphere, color);
-
-		glDisable(GL_BLEND);
-	});
-
-	return mesh_viewer;
 }
 
 SubWindow mesh_modes_subwin()
@@ -336,7 +271,6 @@ SubWindow mesh_modes_subwin()
 		Mode mode;
 		MeshGL mesh;
 		v4f color = v4f(1, 0, 0, 0.5f);
-		bool showBoundingBox = true;
 		bool showNormals = false;
 	};
 	static bool showAllBB = true;
@@ -369,12 +303,7 @@ SubWindow mesh_modes_subwin()
 	auto sub = SubWindow("Render modes", v2i(400, 400),
 		[&]
 	{
-
-		if (ImGui::Checkbox("Show AABBs", &showAllBB)) {
-			for (auto& mesh : meshes) {
-				mesh.second.showBoundingBox = showAllBB;
-			}
-		}
+		ImGui::Checkbox("Show AABBs", &showAllBB);
 
 		if (selectedMesh < 0) {
 			ImGui::Text("No mesh selected");
@@ -410,7 +339,7 @@ SubWindow mesh_modes_subwin()
 			mesh.mesh.setTranslation(pos);
 		}
 		rot = mesh.mesh.transform().eulerAngles();
-		if (ImGui::SliderFloat3("Totation", rot.data(), -2.0f * pi<float>(), 2.0f * pi<float>())) {
+		if (ImGui::SliderFloat3("Rotation", rot.data(), -2.0f * pi<float>(), 2.0f * pi<float>())) {
 			mesh.mesh.setRotation(rot);
 		}
 		static float scale;
@@ -420,7 +349,7 @@ SubWindow mesh_modes_subwin()
 		}
 
 		const auto& m = mesh.mesh;
-		if (ImGui::TreeNode("buffers data")) {
+		if (ImGui::TreeNode("mesh infos")) {
 			std::stringstream h;
 			h << "num vertices : " << m.getVertices().size() << "\n";
 			h << "num triangles : " << m.getTriangles().size() << "\n";
@@ -458,11 +387,7 @@ SubWindow mesh_modes_subwin()
 			int id = (int)std::round(tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id"));
 
 			ImGui::BeginTooltip();
-			if (id != selectedMesh) {
-				ImGui::Text("Click to select : " + std::to_string(hit.instanceId()));
-			} else {
-				ImGui::Text("Click to unselect : " + std::to_string(hit.instanceId()));
-			}
+			ImGui::Text("Click to " + std::string(id == selectedMesh ? "un" : "") + "select : " + std::to_string(hit.instanceId()));
 			ImGui::EndTooltip();
 
 			if (i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
@@ -523,7 +448,7 @@ SubWindow mesh_modes_subwin()
 			}
 			if (m.first == selectedMesh) {
 				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v4f(0, 1, 0, 1));
-			} else if (m.second.showBoundingBox) {
+			} else if (showAllBB) {
 				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v4f(1, 0, 0, 1));
 			}
 		}
@@ -577,7 +502,7 @@ SubWindow rayTracingWin()
 	};
 	static Mode mode = Mode::COLOR;
 
-	static int numBounces = 2, maxNumSamples = 8, samplesPerPixel = 1, currentNumSamples = 0, maxNumThreads = 1;
+	static int numBounces = 2, maxNumSamples = 8, samplesPerPixel = 1, currentNumSamples = 0, maxNumThreads = 4;
 	static bool resetRayCasting = true, useMT = false;
 
 	static const int w = 360, h = 240;
@@ -799,19 +724,155 @@ SubWindow rayTracingWin()
 	return sub;
 }
 
+SubWindow raymarching_win()
+{
+	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube());
+
+	SubWindow win = SubWindow("raymarching", v2i(400, 400));
+
+	win.setUpdateFunction([&](const Input& i) {
+		tb.update(i);
+	});
+
+
+	const std::string vert_str = R"(
+		#version 420
+		layout(location = 0) in vec3 position;
+		uniform mat4 mvp;
+		out vec3 world_position;
+		void main() {
+			world_position = position;
+			gl_Position = mvp * vec4(position, 1.0);
+		}
+	)";
+
+	const std::string frag_str = R"(
+		#version 420
+		layout(location = 0) out vec4 outColor;
+
+		in vec3 world_position;
+		uniform vec3 eye_pos;
+		uniform vec3 bmin = vec3(-1,-1,-1);
+		uniform vec3 bmax = vec3(1,1,1);
+		uniform int gridSize = 10;
+
+		int getMinIndex(vec3 v) {
+			return v.x < v.y ? (v.x < v.z ? 0 : 2 ) : (v.y < v.z ? 1 : 2);
+		}
+
+		float maxCoef(vec3 v){
+			return max(v[0],max(v[1],v[2]));
+		}
+
+		float minCoef(vec3 v){
+			return min(v[0],min(v[1],v[2]));
+		}
+
+		ivec3 getCell(vec3 p){
+			vec3 uv = (p - bmin)/(bmax - bmin);
+			return ivec3(round(gridSize * uv));
+		}
+
+		bool unitBoxIntersection(vec3 dir, out vec3 pt) {
+			vec3 minTs = (bmin - eye_pos)/dir;
+			vec3 maxTs = (bmax - eye_pos)/dir;
+			float nearT = maxCoef(min(minTs,maxTs)); 
+			float farT = minCoef(max(minTs,maxTs)); 
+			if( 0 <= nearT && nearT <= farT){
+				pt = eye_pos + nearT*dir;
+				return true;
+			}
+			return false;
+		}
+
+		void main(){
+	
+			outColor = vec4(0,0,0,1);
+
+			vec3 dir = normalize(world_position - eye_pos);
+			
+			float alpha = 0;
+
+			//setup start
+			vec3 start = eye_pos;
+			if(!(all(greaterThan(eye_pos, bmin)) && all(greaterThan(bmax, eye_pos)))){
+				vec3 intersection;
+				if(unitBoxIntersection(dir, intersection)){
+					start = intersection;
+				} else {
+					return;
+				}
+			} 
+
+			vec3 cellSize = (bmax - bmin)/gridSize; 
+			start = clamp(start, bmin + 0.01*cellSize, bmax - 0.01*cellSize);
+
+			//outColor.xyz = 0.5*start+0.5;
+			//return; 
+
+			//setup raymarching
+			
+			vec3 deltas = cellSize / abs(dir);
+			vec3 fracs = fract((start - bmin)/cellSize);
+			vec3 ts;
+			ivec3 finalCell, steps, currentCell = getCell(start);
+			for(int c=0; c<3; ++c){
+				steps[c] = (dir[c] >= 0 ? 1 : -1);
+				ts[c] = deltas[c] * (dir[c] >= 0 ? 1.0 - fracs[c] : fracs[c]);
+				finalCell[c] = (dir[c] >= 0 ? gridSize : - 1);
+			}
+
+			//actual raymarching
+			while(true){
+
+				//do stuff with currentCell
+				alpha += 0.5/float(gridSize);
+
+				int c = getMinIndex(ts);
+
+				currentCell[c] += steps[c];
+				if(currentCell[c] == finalCell[c]){
+					break;
+				}	
+				ts[c] += deltas[c];
+			}
+
+			outColor.xyz = alpha*vec3(1,0,0)+(1.0-alpha)*vec3(0,0,1);
+		}
+	)";
+
+	static ShaderCollection shaders;
+	static ShaderProgram shader;
+	static Uniform<v3f> eye_pos = { "eye_pos" };
+	shader.init(vert_str, frag_str);
+	shader.addUniforms(shaders.mvp, eye_pos);
+
+	win.setRenderingFunction([&](Framebuffer& dst) {
+		dst.bindDraw();
+
+		const RaycastingCameraf eye = RaycastingCameraf(tb.getCamera(), v2i(dst.w(), dst.h()));
+		eye_pos = eye.position();
+		shaders.mvp = eye.viewProj();
+		shader.use();
+		eye.getQuad(0.5f * (eye.zNear() + eye.zFar())).draw();
+	});
+
+	return win;
+}
+
 int main(int argc, char** argv)
 {
 
 	auto win_checkers = checker_subwin();
-	auto win_mesh = mesh_viewer_subwin();
 	auto win_mesh_modes = mesh_modes_subwin();
 	auto win_raytracing = rayTracingWin();
+	auto win_raymarch = raymarching_win();
 
 	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::DEBUG,
 		[&](const Window& win) {
 		ImGui::Checkbox("texture viewer", &win_checkers.active());
 		ImGui::SameLine();
-		ImGui::Checkbox("mesh viewer", &win_mesh.active());
+		ImGui::Checkbox("ray marching", &win_raymarch.active());
 		ImGui::Checkbox("mesh modes", &win_mesh_modes.active());
 		ImGui::SameLine();
 		ImGui::Checkbox("ray tracing", &win_raytracing.active());
@@ -819,7 +880,7 @@ int main(int argc, char** argv)
 
 	mainWin.renderingLoop([&]{
 		win_checkers.show(mainWin);
-		win_mesh.show(mainWin);
+		win_raymarch.show(mainWin);
 		win_mesh_modes.show(mainWin);
 		win_raytracing.show(mainWin);
 

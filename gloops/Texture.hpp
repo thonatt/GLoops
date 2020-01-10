@@ -2,6 +2,8 @@
 
 #include "config.hpp"
 
+#include "Input.hpp"
+
 #include <list>
 #include <thread>
 #include <atomic>
@@ -487,13 +489,22 @@ namespace gloops {
 		TexParams(const TexParamsFormat& format) : TexParamsFormat(format) {
 		}
 
+		bool changeRequiresReallocating(const TexParams& other) const
+		{
+			return
+				static_cast<const TexParamsFormat&>(*this) != other ||
+				static_cast<const TexParamsAlignement&>(*this) != other ||
+				static_cast<const TexParamsFilter&>(*this) != other;
+		}
+
 		bool operator==(const TexParams& other) const {
 			return
 				static_cast<const TexParamsFormat&>(*this) == other &&
 				static_cast<const TexParamsFilter&>(*this) == other &&
 				static_cast<const TexParamsMipmap&>(*this) == other &&
 				static_cast<const TexParamsWrap&>(*this) == other &&
-				static_cast<const TexParamsAlignement&>(*this) == other;
+				static_cast<const TexParamsAlignement&>(*this) == other &&
+				static_cast<const TexParamsSwizzleMask&>(*this) == other;
 		}
 		bool operator!=(const TexParams& other) const {
 			return !(*this == other);
@@ -601,7 +612,10 @@ namespace gloops {
 
 		void bind(GLenum target = GL_FRAMEBUFFER) const;
 		void bindDraw() const;
+		void bindDraw(const Viewportd& vp) const;
 		void bindDraw(GLenum attachment) const;
+		void bindDraw(GLenum attachment, const Viewportd& vp) const;
+
 		void bindRead(GLenum attachment) const;
 
 		void clear(const v4f& color = { 0,0,0,0 }, GLbitfield mask = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
@@ -726,13 +740,13 @@ namespace gloops {
 	inline void Texture::update(const T& t, const TexParams& _params)
 	{
 		ImageInfos<T> infos(t);
-		if (w() != infos.w() || h() != infos.h() || n() != infos.n() || getParams() != _params) {
-			static_cast<TexParams&>(*this) = _params;
-			//createGPUid();
+
+		if (w() != infos.w() || h() != infos.h() || n() != infos.n() || changeRequiresReallocating(_params)) {
+			createGPUid();
+			update(_params);
 			createFromImage(infos);
 		} else {
-			check();
-			bind();
+			update(_params);
 			uploadToGPU(0, 0, 0, infos.w(), infos.h(), infos.data());
 		}
 	}

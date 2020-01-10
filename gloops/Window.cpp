@@ -333,7 +333,7 @@ namespace gloops {
 	{
 		v2i size;
 		glfwGetWindowSize(window.get(), &size[0], &size[1]);
-		_viewport = Viewport(v2d(0, menuBarSize.y()), size.template cast<double>());
+		_viewport = Viewportd(v2d(0, menuBarSize.y()), size.template cast<double>());
 	}
 
 	void Window::automatic_subwins_layout()
@@ -349,16 +349,16 @@ namespace gloops {
 
 		double ratio = std::clamp<double>(ratio_rendering_gui, 0, 1);
 
-		Viewport render_grid_vp = Viewport(viewport().min(), viewport().min() + viewport().diagonal().cwiseProduct(v2d(ratio, 1.0)));
-		Viewport gui_grid_vp = Viewport(viewport().min() + viewport().diagonal().cwiseProduct(v2d(ratio, 0.0)), viewport().max());
+		Viewportd render_grid_vp = Viewportd(viewport().min(), viewport().min() + viewport().diagonal().cwiseProduct(v2d(ratio, 1.0)));
+		Viewportd gui_grid_vp = Viewportd(viewport().min() + viewport().diagonal().cwiseProduct(v2d(ratio, 0.0)), viewport().max());
 
 		const size_t render_grid_size = (size_t)std::ceil(std::sqrt(num_render_win));
 		v2d render_grid_res = v2d(render_grid_size, render_grid_size);
 		v2d gui_grid_res = v2d(1, num_gui_win);
 
-		auto drawVP = [](WindowComponent& comp, const Viewport& vp, const v2i& coords, const v2d& res) {
+		auto drawVP = [](WindowComponent& comp, const Viewportd& vp, const v2i& coords, const v2d& res) {
 			v2d uv = vp.diagonal().cwiseQuotient(res);
-			Viewport subVP = Viewport(
+			Viewportd subVP = Viewportd(
 				vp.min() + uv.cwiseProduct(coords.template cast<double>()),
 				vp.min() + uv.cwiseProduct((coords + v2i(1, 1)).template cast<double>())
 			);
@@ -485,7 +485,7 @@ namespace gloops {
 	size_t WindowComponent::counter = 0;
 
 	WindowComponent::WindowComponent(const std::string& name, Type type, const Func& guiFunc, const v2f& weights)
-		: Viewport(v2d(0, 0), v2d(1, 1)), _name(name), _guiFunc(guiFunc), _type(type), _weights(weights), id(counter)
+		: Viewportd(v2d(0, 0), v2d(1, 1)), _name(name), _guiFunc(guiFunc), _type(type), _weights(weights), id(counter)
 	{
 		++counter;
 	}
@@ -525,7 +525,7 @@ namespace gloops {
 				v2d availableSize(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y);
 				//std::cout << _name << " topleft / available : " << screenTopLeft.transpose() << " " << availableSize.transpose() << std::endl;
 
-				static_cast<Viewport&>(*this) = Viewport(screenTopLeft, screenTopLeft + availableSize);
+				static_cast<Viewportd&>(*this) = Viewportd(screenTopLeft, screenTopLeft + availableSize);
 
 				//std::cout << _name << " vp min max : " << min().transpose() << " " << max().transpose() << std::endl;
 				//std::cout << _name <<  " " << this << std::endl;
@@ -553,9 +553,9 @@ namespace gloops {
 		return _active;
 	}
 
-	void WindowComponent::resize(const Viewport& vp)
+	void WindowComponent::resize(const Viewportd& vp)
 	{
-		static_cast<Viewport&>(*this) = vp;
+		static_cast<Viewportd&>(*this) = vp;
 		shouldResize = true;
 	}
 
@@ -596,7 +596,7 @@ namespace gloops {
 		
 		//std::cout << "subwin rsize : " << render_size.transpose() << std::endl;
 
-		_viewport = Viewport(v2d(0, ImGui::TitleHeight()), v2d(render_size[0], render_size[1] + ImGui::TitleHeight()));
+		_viewport = Viewportd(v2d(0, ImGui::TitleHeight()), v2d(render_size[0], render_size[1] + ImGui::TitleHeight()));
 
 
 		//std::cout << name << " ctor : rcom " << &renderComponent << std::endl;
@@ -609,11 +609,11 @@ namespace gloops {
 
 			//std::cout << win_name << " rcom " << &renderComponent << std::endl;
 
-			v2f offset, size;
+			v2d offset, size;
 
 			//std::cout << "vp diag / rcomp diag  : " << viewport().diagonal().transpose() << " " << renderComponent.diagonal().transpose() << std::endl;
 			
-			fitContent(offset, size, viewport().diagonal().cwiseMax(v2d(1, 1)).template cast<float>(), renderComponent->diagonal().template cast<float>());
+			fitContent(offset, size, viewport().diagonal().cwiseMax(v2d(1, 1)), renderComponent->diagonal());
 			
 			//std::cout << "offset / size : " << offset.transpose() << " " << size.transpose() << std::endl;
 
@@ -621,12 +621,12 @@ namespace gloops {
 				std::cout << "offset size " << offset.transpose() << " " << size.transpose() << std::endl;
 			}
 
-			v2f screenTopLeft = renderComponent->min().template cast<float>() + offset;
-			v2f screenBottomRight = screenTopLeft + size;
+			v2d screenTopLeft = renderComponent->min() + offset;
+			v2d screenBottomRight = screenTopLeft + size;
 
 			debugWin();
 
-			_viewport = Viewport(screenTopLeft.template cast<double>(), screenBottomRight.template cast<double>());
+			_viewport = Viewportd(screenTopLeft, screenBottomRight);
 
 			//viewport().checkNan();
 
@@ -650,13 +650,13 @@ namespace gloops {
 				renderingFunc(framebuffer);
 			}
 
-			ImGui::SetCursorPos({ offset[0], offset[1] });
+			ImGui::SetCursorPos({ (float)offset[0], (float)offset[1] });
 
-			ImGui::InvisibleButton((win_name + "_dummy").c_str(), { size[0], size[1] });
+			ImGui::InvisibleButton((win_name + "_dummy").c_str(), { (float)size[0], (float)size[1] });
 			ImGui::GetWindowDrawList()->AddImage(
 				framebuffer.getAttachment().getId(),
-				{ screenTopLeft[0], screenBottomRight[1] },
-				{ screenBottomRight[0], screenTopLeft[1] }
+				{ (float)screenTopLeft[0], (float)screenBottomRight[1] },
+				{ (float)screenBottomRight[0], (float)screenTopLeft[1] }
 			);
 		});
 
@@ -703,9 +703,9 @@ namespace gloops {
 		return *guiComponent;
 	}
 
-	void SubWindow::fitContent(v2f& outOffset, v2f& outSize, const v2f& vpSize, const v2f& availableSize)
+	void SubWindow::fitContent(v2d& outOffset, v2d& outSize, const v2d& vpSize, const v2d& availableSize)
 	{
-		const v2f ratios = vpSize.cwiseQuotient(availableSize);
+		const v2d ratios = vpSize.cwiseQuotient(availableSize);
 		if (ratios.x() < ratios.y()){
 			outSize.y() = availableSize.y();
 			outSize.x() = outSize.y() * vpSize.x() / vpSize.y();
