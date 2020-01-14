@@ -228,6 +228,20 @@ namespace gloops {
 	}
 
 	template<typename T, int N>
+	Vec<T, N> randomVec(T min, T max)
+	{
+		static std::random_device device;
+		static std::mt19937 generator(device());
+		std::uniform_real_distribution<T> distribution(min, max);
+
+		Vec<T, N> out;
+		for (int i = 0; i < N; ++i) {
+			out[i] = distribution(generator);
+		}
+		return out;
+	}
+
+	template<typename T, int N>
 	Vec<T, N> randomUnit()
 	{
 		Vec<T, N> out;

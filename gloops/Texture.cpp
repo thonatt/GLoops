@@ -641,7 +641,7 @@ namespace gloops {
 			}		
 		}
 
-		if (img_ptr && flags & ReleaseCPUmemoryAfterGPUupload) {
+		if (img_ptr && (flags & ReleaseCPUmemoryAfterGPUupload)) {
 			img_ptr.reset();
 		}
 		

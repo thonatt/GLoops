@@ -682,7 +682,7 @@ namespace gloops {
 
 	public:
 
-		enum Flags : uint { ReleaseCPUmemoryAfterGPUupload };
+		enum Flags : uint { ReleaseCPUmemoryAfterGPUupload = 1 << 0 };
 
 		using Ptr = std::shared_ptr<TextureManager>;
 
