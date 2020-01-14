@@ -64,6 +64,9 @@ namespace gloops {
 	template<> inline void GLuniformInternal<v2i>::send() const {
 		glUniform2i(location, t[0], t[1]);
 	}
+	template<> inline void GLuniformInternal<v3i>::send() const {
+		glUniform3i(location, t[0], t[1], t[2]);
+	}
 	template<> inline void GLuniformInternal<v2f>::send() const {
 		glUniform2f(location, t[0], t[1]);
 	}

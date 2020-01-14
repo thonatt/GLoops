@@ -19,7 +19,7 @@ static Window mainWin = Window("GLoops demos");
 static TexParams texParams = TexParams().enableMipmap().setMagFilter(GL_NEAREST);
 
 Texture checkers_tex = Texture(checkersTexture(80, 80, 10), texParams), perlinTex, 
-	kittenTex = Texture::fromPath("../kitten.png", texParams);
+	kittenTex = Texture::fromPath2D("../../kitten.png", texParams);
 
 enum class TexMode { CHECKERS, PERLIN, KITTEN };
 struct ModeData {
@@ -113,7 +113,7 @@ SubWindow checker_subwin()
 			colChanged |= colPicker("second", &colB[0]);
 			if (colChanged) {	
 				Image3b img = (perlin * colA + (1 - perlin) * colB).convert<uchar>(255);
-				perlinTex.update(img, texParams);
+				perlinTex.update2D(img, texParams);
 				colChanged = false;
 			}
 		}
@@ -139,6 +139,10 @@ SubWindow checker_subwin()
 		if (fixLods) {
 			ImGui::SameLine();
 			ImGui::ItemWithSize(150, [&] { ImGui::SliderFloat("##lod", &lod, 0, float(currentTex().nLods() - 1)); });
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("recenter")) {
+			texCenter = v2f(0, 0);
 		}
 
 		ImGui::Text("Mag filtering : ");
@@ -182,11 +186,11 @@ SubWindow checker_subwin()
 		zoomLevel = std::clamp(zoomLevel, 0.6f, 10.0f);
 
 		const v2f mPos = (2 * zoomLevel - 1.0f) * i.mousePosition().cwiseQuotient(i.viewport().diagonal()).template cast<float>();
-		if (i.buttonClicked(GLFW_MOUSE_BUTTON_RIGHT)) {
+		if (i.buttonClicked(GLFW_MOUSE_BUTTON_RIGHT) || i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
 			clickedPosition = mPos;
 			previousCenter = texCenter;
 		}
-		if (i.buttonActive(GLFW_MOUSE_BUTTON_RIGHT)) {
+		if (i.buttonActive(GLFW_MOUSE_BUTTON_RIGHT) || i.buttonActive(GLFW_MOUSE_BUTTON_LEFT)) {
 			texCenter = previousCenter + clickedPosition - mPos;
 		}
 	},
@@ -198,6 +202,7 @@ SubWindow checker_subwin()
 		const v2f uvCenter = texCenter;
 		const v2f tl = uvCenter + v2f(1.0f - zoomLevel, zoomLevel), br = uvCenter + v2f(zoomLevel, 1.0f - zoomLevel);
 		screenQuad = MeshGL::quad({ 0,0,0 }, { 1,1,0 }, { -1,1, 0 }, tl, br);
+		screenQuad.backface_culling = false;
 
 		dst.bindDraw();
 		shaders.renderTexturedMesh(screenQuad, currentTex(), 1.0f, lod);
@@ -212,15 +217,15 @@ SubWindow checker_subwin()
 			Image4b tmp(2 * r + 1, 2 * r + 1);
 			tmp.setTo(v4b(0, 0, 0, 0));
 			dst.readBack(tmp, 2 * r + 1, 2 * r + 1, xy[0], xy[1]);
-			zoom.update(tmp, DefaultTexParams<Image4b>().disableMipmap().setMagFilter(GL_NEAREST));
+			zoom.update2D(tmp, DefaultTexParams<Image4b>().disableMipmap().setMagFilter(GL_NEAREST));
 
 			ImGui::BeginTooltip();
 			ImGui::Image(zoom.getId(), { 100, 100 }, { 0,1 }, { 1,0 });
-			std::stringstream s;
-			s << "click " << clickedPosition.transpose() << std::endl;
-			s << "texcenter " << texCenter.transpose() << std::endl;
-			s << "prev " << previousCenter.transpose() << std::endl;
-			ImGui::Text(s);
+			//std::stringstream s;
+			//s << "click " << clickedPosition.transpose() << std::endl;
+			//s << "texcenter " << texCenter.transpose() << std::endl;
+			//s << "prev " << previousCenter.transpose() << std::endl;
+			//ImGui::Text(s);
 			ImGui::EndTooltip();
 		}
 
@@ -705,7 +710,7 @@ SubWindow rayTracingWin()
 				img = currentSamplesAverage.convert<uchar>(128, 128, hitMask, 255);
 			}
 
-			tex.update(img);
+			tex.update2D(img);
 		} else {
 			gatherPaths = false;
 		}
@@ -724,18 +729,7 @@ SubWindow rayTracingWin()
 	return sub;
 }
 
-SubWindow raymarching_win()
-{
-	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube());
-
-	SubWindow win = SubWindow("raymarching", v2i(400, 400));
-
-	win.setUpdateFunction([&](const Input& i) {
-		tb.update(i);
-	});
-
-
-	const std::string vert_str = R"(
+const std::string voxelgrid_vert_str = R"(
 		#version 420
 		layout(location = 0) in vec3 position;
 		uniform mat4 mvp;
@@ -746,106 +740,183 @@ SubWindow raymarching_win()
 		}
 	)";
 
-	const std::string frag_str = R"(
-		#version 420
+const std::string voxelgrid_frag_str = R"(
+		#version 430
 		layout(location = 0) out vec4 outColor;
+		layout(binding = 0) uniform sampler3D tex; 
 
 		in vec3 world_position;
 		uniform vec3 eye_pos;
-		uniform vec3 bmin = vec3(-1,-1,-1);
-		uniform vec3 bmax = vec3(1,1,1);
-		uniform int gridSize = 10;
+		uniform vec3 bmin;
+		uniform vec3 bmax;
+		uniform ivec3 gridSize;
+
+		vec4 sampleTex(ivec3 cell) {
+			return texture(tex, (vec3(cell) + 0.5)/vec3(gridSize));
+		}
+
+		vec4 sampleTex(vec3 pos) {
+			return texture(tex, (pos - bmin)/(bmax-bmin));
+		}
 
 		int getMinIndex(vec3 v) {
-			return v.x < v.y ? (v.x < v.z ? 0 : 2 ) : (v.y < v.z ? 1 : 2);
+			return v.x <= v.y ? (v.x <= v.z ? 0 : 2 ) : (v.y <= v.z ? 1 : 2);
 		}
 
 		float maxCoef(vec3 v){
-			return max(v[0],max(v[1],v[2]));
+			return max(v.x,max(v.y,v.z));
 		}
 
 		float minCoef(vec3 v){
-			return min(v[0],min(v[1],v[2]));
+			return min(v.x,min(v.y,v.z));
 		}
 
 		ivec3 getCell(vec3 p){
 			vec3 uv = (p - bmin)/(bmax - bmin);
-			return ivec3(round(gridSize * uv));
+			return ivec3(floor(vec3(gridSize) * uv));
 		}
 
-		bool unitBoxIntersection(vec3 dir, out vec3 pt) {
-			vec3 minTs = (bmin - eye_pos)/dir;
-			vec3 maxTs = (bmax - eye_pos)/dir;
+		bool check(vec3 v){
+			return !(any(isnan(v)) || any(isinf(v)));
+		}
+
+		bool checkCell(ivec3 c){
+			return all(greaterThanEqual(c, ivec3(0))) && all(greaterThanEqual(gridSize - 1, c));
+		}
+
+		float boxIntersection(vec3 rayDir) {
+			vec3 minTs = (bmin - eye_pos)/rayDir;
+			vec3 maxTs = (bmax - eye_pos)/rayDir;
+
 			float nearT = maxCoef(min(minTs,maxTs)); 
 			float farT = minCoef(max(minTs,maxTs)); 
 			if( 0 <= nearT && nearT <= farT){
-				pt = eye_pos + nearT*dir;
-				return true;
+				return nearT;
 			}
-			return false;
+			return -1.0;
 		}
 
 		void main(){
 	
 			outColor = vec4(0,0,0,1);
-
 			vec3 dir = normalize(world_position - eye_pos);
-			
-			float alpha = 0;
 
 			//setup start
 			vec3 start = eye_pos;
-			if(!(all(greaterThan(eye_pos, bmin)) && all(greaterThan(bmax, eye_pos)))){
-				vec3 intersection;
-				if(unitBoxIntersection(dir, intersection)){
-					start = intersection;
+			
+			if(!(all(greaterThanEqual(eye_pos, bmin)) && all(greaterThanEqual(bmax, eye_pos)))){
+				float distToBox = boxIntersection(dir);
+				if(distToBox >= 0){
+					start = eye_pos + distToBox*dir;
 				} else {
 					return;
 				}
 			} 
 
-			vec3 cellSize = (bmax - bmin)/gridSize; 
-			start = clamp(start, bmin + 0.01*cellSize, bmax - 0.01*cellSize);
-
-			//outColor.xyz = 0.5*start+0.5;
-			//return; 
+			vec3 cellSize = (bmax - bmin)/vec3(gridSize); 
+			start = clamp(start, bmin, bmax - 0.001*cellSize);
+			ivec3 currentCell = getCell(start);
 
 			//setup raymarching
-			
 			vec3 deltas = cellSize / abs(dir);
-			vec3 fracs = fract((start - bmin)/cellSize);
+			vec3 fracs = fract((start - bmin)/cellSize);			
 			vec3 ts;
-			ivec3 finalCell, steps, currentCell = getCell(start);
-			for(int c=0; c<3; ++c){
-				steps[c] = (dir[c] >= 0 ? 1 : -1);
-				ts[c] = deltas[c] * (dir[c] >= 0 ? 1.0 - fracs[c] : fracs[c]);
-				finalCell[c] = (dir[c] >= 0 ? gridSize : - 1);
+			ivec3 finalCell, steps;
+			for(int k=0; k<3; ++k){
+				steps[k] = (dir[k] >= 0 ? 1 : -1);
+				ts[k] = deltas[k] * (dir[k] >= 0 ? 1.0 - fracs[k] : fracs[k]);
+				finalCell[k] = (dir[k] >= 0 ? gridSize[k] : -1);
 			}
-
+					
 			//actual raymarching
-			while(true){
 
-				//do stuff with currentCell
-				alpha += 0.5/float(gridSize);
-
-				int c = getMinIndex(ts);
-
+			float transmittance = 1.0;
+			vec3 base_color = vec3(1,1,0);
+			vec3 color = vec3(0);
+			
+			vec3 prevPos = start, nextPos;
+			int c = 0;
+			do {
+				//if(!checkCell(currentCell)){
+				//	if(any(lessThan(currentCell, ivec3(0)))){
+				//		outColor = vec4(1,1,0,1);
+				//	} else if(any(lessThan(gridSize - 1, currentCell))){
+				//		outColor = vec4(0,1,1,1);
+				//	}	
+				//	return;
+				//}
+				
+				c = getMinIndex(ts);
 				currentCell[c] += steps[c];
-				if(currentCell[c] == finalCell[c]){
-					break;
-				}	
 				ts[c] += deltas[c];
-			}
+							
+				nextPos = start + ts[c] * dir;
+				float density = sampleTex(0.5*(prevPos + nextPos)).x; //sampleTex(currentCell).x;
+				float deltaT = exp(-3.0*density);
+				transmittance *= deltaT;
+				color += (1.0-deltaT) * transmittance* base_color;
+				prevPos = nextPos;
 
-			outColor.xyz = alpha*vec3(1,0,0)+(1.0-alpha)*vec3(0,0,1);
+			} while (all(notEqual(currentCell, finalCell))); //all(notEqual(currentCell, finalCell))   //currentCell[c] != finalCell[c]
+			
+			outColor.xyz = color;
+
+			//alpha /= float(2*gridSize[0]);
+			//alpha = clamp(alpha, 0, 1);
+
+			//outColor.xyz = vec3(alpha);
+			//	mix(vec3(1,0,0), vec3(0,0,1), alpha);
+			//  mix(vec3(0,1,0), vec3(1,0,1), alpha);
+			//  mix(vec3(0,0,0), vec3(1,1,1), alpha);
+			//  mix(vec3(0.1,0.2,0.3), vec3(0.9,0.8,0.7), alpha);
+			//  vec3(alpha,1.0-alpha, 0.5*alpha);
+			//  vec3(alpha); 
+			
 		}
 	)";
 
+SubWindow raymarching_win()
+{
+	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube());
+
+	SubWindow win = SubWindow("raymarching", v2i(400, 400));
+
+	win.setUpdateFunction([&](const Input& i) {
+		tb.update(i);
+	});
+
 	static ShaderCollection shaders;
 	static ShaderProgram shader;
-	static Uniform<v3f> eye_pos = { "eye_pos" };
-	shader.init(vert_str, frag_str);
-	shader.addUniforms(shaders.mvp, eye_pos);
+	static Uniform<v3f> eye_pos = { "eye_pos" }, bmax = { "bmax", 0.5*v3f(1,1,1) }, bmin = { "bmin", 0.5*v3f(-1,-1,-1) };
+	static Uniform<v3i> gridSize = { "gridSize", v3i(20,20,20) };
+	shader.init(voxelgrid_vert_str, voxelgrid_frag_str);
+	shader.addUniforms(shaders.mvp, eye_pos, bmin, bmax, gridSize);
+
+
+	const int a = 50;
+	const int w = a, h = a, d = a;
+	TexParams params;
+	params.setTarget(GL_TEXTURE_3D).setFormat(GL_RED).setInternalFormat(GL_R8).disableMipmap();
+	
+	static Texture density = Texture(w, h, d, 1, params);
+	std::vector<uchar> voxelData(w * h * d, 0);
+	for (int i = 0; i < d; ++i) {
+		for (int j = 0; j < h; ++j) {
+			for (int k = 0; k < w; ++k) {
+				float x = 1.0f + 0.2f*(randomVec<float, 1>().x());
+				float di = (float)(i - d / 2), dj = (float)(j - h / 2), dk = (float)(k - w / 2);
+				float diff = exp(-(di * di + dj * dj + dk * dk)/(a));
+				voxelData[k + w * (j + h * i)] = saturate_cast<uchar>(255.0f * diff * x);
+			}
+		}
+	}
+	density.updloadToGPU3D(0, 0, 0, 0, w, h, d, voxelData.data());
+
+	win.setGuiFunction([&] {
+		if (ImGui::SliderInt("grid size", &gridSize.get()[0], 1, 256)) {
+			gridSize = gridSize.get()[0] * v3i(1, 1, 1);
+		}
+	});
 
 	win.setRenderingFunction([&](Framebuffer& dst) {
 		dst.bindDraw();
@@ -853,8 +924,14 @@ SubWindow raymarching_win()
 		const RaycastingCameraf eye = RaycastingCameraf(tb.getCamera(), v2i(dst.w(), dst.h()));
 		eye_pos = eye.position();
 		shaders.mvp = eye.viewProj();
+		density.bindSlot(GL_TEXTURE0);
 		shader.use();
-		eye.getQuad(0.5f * (eye.zNear() + eye.zFar())).draw();
+		eye.getQuad(0.9f*eye.zFar()).draw();
+
+
+		MeshGL axis = MeshGL::getAxis().setTranslation(v3f(-1, -1, -1));
+		axis.mode = GL_LINE;
+		shaders.renderColoredMesh(eye, axis);
 	});
 
 	return win;

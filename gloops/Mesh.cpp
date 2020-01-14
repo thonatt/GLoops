@@ -213,7 +213,7 @@ namespace gloops {
 	{
 		Mesh::setVertices(verts);
 		dirtyBuffers = true;
-		attributes_mapping["potision"] = VertexAttribute(getVertices(), location);
+		attributes_mapping["positions"] = VertexAttribute(getVertices(), location);
 		if (numElements == 0) {
 			numElements = static_cast<GLsizei>(getVertices().size());
 		}
@@ -284,14 +284,14 @@ namespace gloops {
 		if (depth_test) {
 			glEnable(GL_DEPTH_TEST);
 		}
-
-		glBindVertexArray(vao);
-
+	
 		if (mode == GL_POINT) {
 			primitive = GL_POINTS;
 		} else {
 			primitive = GL_TRIANGLES;
 		}
+
+		glBindVertexArray(vao);
 
 		switch (primitive)
 		{

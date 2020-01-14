@@ -95,10 +95,18 @@ namespace gloops {
 	{
 		size = std::make_shared<Size>();
 		createGPUid();
-		allocate(w, h, nchannels);
+		allocate2D(w, h, nchannels);
 	}
 
-	Texture Texture::fromPath(const std::string& img_path, const TexParams& params)
+	Texture::Texture(int w, int h, int l, int nchannels, const TexParams& params)
+		: TexParams(params)
+	{
+		size = std::make_shared<Size>();
+		createGPUid();
+		allocate3D(w, h, l, nchannels);
+	}
+
+	Texture Texture::fromPath2D(const std::string& img_path, const TexParams& params)
 	{
 		Image3b img;
 		img.load(img_path);
@@ -110,26 +118,50 @@ namespace gloops {
 		static_cast<TexParams&>(*this) = params;
 	}
 
-	void Texture::allocate(int width, int height, int nchannels)
+	void Texture::allocate2D(int width, int height, int nchannels)
 	{
 		(*size)._w = width;
 		(*size)._h = height;
 		(*size)._n = nchannels;
 
-		(*size)._lods = useMipmap ?
-			static_cast<int>(std::ceil(std::log(std::max(w(), h())))) + 1 : 1;
+		if (useMipmap) {
+			int max_dim = std::max(w(), h());
+			(*size)._lods = static_cast<int>(std::ceil(std::log(max_dim))) + 1;
+		}
 
 		bind();
-
-		glTexStorage2D(target, (*size)._lods, internal_format, w(), h());
+		glTexStorage2D(target, nLods(), internal_format, w(), h());
 		gl_check();
 	}
 
-	void Texture::uploadToGPU(int lod, int xoffset, int yoffset, int width, int height, const void * data)
+	void Texture::uploadToGPU2D(int lod, int xoffset, int yoffset, int width, int height, const void * data)
 	{
 		setAlignment();
 		bind();
 		glTexSubImage2D(target, lod, xoffset, yoffset, width, height, format, type, data);
+	}
+
+	void Texture::allocate3D(int width, int height, int depth, int nchannels)
+	{
+		(*size)._w = width;
+		(*size)._h = height;
+		(*size)._d = depth;
+		(*size)._n = nchannels;
+
+		if (useMipmap) {
+			int max_dim = std::max(w(), std::max(h(), d()));
+			(*size)._lods = static_cast<int>(std::ceil(std::log(max_dim))) + 1;
+		}
+
+		bind();
+		glTexStorage3D(target, nLods(), internal_format, w(), h(), d());
+	}
+
+	void Texture::updloadToGPU3D(int lod, int xoffset, int yoffset, int zoffset, int width, int height, int depth, const void* data)
+	{
+		setAlignment();
+		bind();
+		glTexSubImage3D(target, lod, xoffset, yoffset, zoffset, width, height, depth, format, type, data);
 	}
 
 	void Texture::generateMipmaps() const
@@ -188,6 +220,11 @@ namespace gloops {
 	int Texture::n() const
 	{
 		return (*size)._n;
+	}
+
+	int Texture::d() const
+	{
+		return (*size)._d;
 	}
 
 	int Texture::nLods() const
@@ -261,15 +298,15 @@ namespace gloops {
 		createBuffer();
 	}
 
-	Framebuffer::Framebuffer(int w, int h, int n, const TexParams& params, int numAttachments)
-		: _w(w), _h(h)
+	Framebuffer::Framebuffer(int width, int height, int numChannels, const TexParams& params, int numAttachments)
+		: _w(width), _h(height)
 	{
 
 		createBuffer();
 		createDepth(_w, _h);
 
 		for (int i = 0; i < numAttachments; ++i) {
-			Texture tex = Texture(_w, _h, n, params);
+			Texture tex = Texture(w(), h(), numChannels, params);
 			setAttachment(tex, GL_COLOR_ATTACHMENT0 + i, 0);
 		}
 
@@ -289,7 +326,7 @@ namespace gloops {
 
 		for (auto& attachment : attachments) {
 			const auto& currentTex = attachment.second;	
-			Texture tex = Texture(_w, _h, currentTex.n(), currentTex.getParams());
+			Texture tex = Texture(w(), h(), currentTex.n(), currentTex.getParams());
 			setAttachment(tex, attachment.first, 0);
 		}
 
@@ -578,7 +615,7 @@ namespace gloops {
 		}
 
 		if (!gpu_mem_allocated) {
-			tex_ptr->allocate(img_ptr->w(), img_ptr->h(), img_ptr->n());
+			tex_ptr->allocate2D(img_ptr->w(), img_ptr->h(), img_ptr->n());
 			gpu_tile_id = 0;
 			gpu_mem_allocated = true;
 			return TextureStatus::MEM_ALLOCATED;
@@ -593,7 +630,7 @@ namespace gloops {
 			const int tilesize_i = std::min(rows_per_tile, tex_ptr->h() - offset_i);
 			const void* data = img_ptr->data() + rows_per_tile * static_cast<size_t>(bytes_per_row)* gpu_tile_id;
 			
-			tex_ptr->uploadToGPU(0, 0, offset_i, tex_ptr->w(), tilesize_i, data);
+			tex_ptr->uploadToGPU2D(0, 0, offset_i, tex_ptr->w(), tilesize_i, data);
 
 			++gpu_tile_id;
 			if (gpu_tile_id == num_tiles) {

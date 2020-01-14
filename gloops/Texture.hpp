@@ -324,12 +324,18 @@ namespace gloops {
 			: _w(w), _h(h), _n(n), _data(data) {
 		}
 
+		ImageInfosData(int w, int h, int d, int n, const void* data)
+			: _w(w), _h(h), _d(d), _n(n), _data(data) {
+		}
+		
 		int w() const { return _w; }
 		int h() const { return _h; }
 		int n() const { return _n; }
+		int d() const { return _d; }
+
 		const void* data() const { return _data; }
 
-		int _w, _h, _n;
+		int _w, _h, _d = 0, _n;
 		const void* _data;
 	};
 
@@ -543,19 +549,24 @@ namespace gloops {
 		Texture(const TexParams& params = {});
 
 		Texture(int w, int h, int nchannels, const TexParams& params = {});
+		Texture(int w, int h, int l, int nchannels, const TexParams& params = {});
 
-		static Texture fromPath(const std::string& img_path, const TexParams& params = {});
+		static Texture fromPath2D(const std::string& img_path, const TexParams& params = {});
 
 		template<typename T>
-		Texture(const T& t, const TexParams& params = DefaultTexParams<T>{});
+		explicit Texture(const T& t, const TexParams& params = DefaultTexParams<T>{});
 
 		void update(const TexParams& params);
 
 		template<typename T>
-		void update(const T& t, const TexParams& params = DefaultTexParams<T>{});
+		void update2D(const T& t, const TexParams& params = DefaultTexParams<T>{});
 
-		void allocate(int width, int height, int nchannels);
-		void uploadToGPU(int lod, int xoffset, int yoffset, int width, int height, const void* data);
+		void allocate2D(int width, int height, int nchannels);
+		void uploadToGPU2D(int lod, int xoffset, int yoffset, int width, int height, const void* data); 
+		
+		void allocate3D(int width, int height, int depth, int nchannels);
+		void updloadToGPU3D(int lod, int xoffset, int yoffset, int zoffset, int width, int height, int depth, const void* data);
+
 
 		void bind() const;
 		void bindSlot(GLuint slot) const;
@@ -563,6 +574,8 @@ namespace gloops {
 		int w() const;
 		int h() const;
 		int n() const;
+		int d() const;
+
 		int nLods() const;
 
 		const TexParams& getParams() const;
@@ -572,8 +585,10 @@ namespace gloops {
 		operator GLuint() const;
 		GLuint getId() const;
 
+	
 	protected:
 		void check() const;
+
 		void setFilter() const;
 		void generateMipmaps() const;
 		void setWrap() const;
@@ -584,10 +599,10 @@ namespace gloops {
 		//void releaseGPUmemory();
 
 		template<typename T>
-		void createFromImage(const ImageInfos<T>& img);
+		void createFromImage2D(const ImageInfos<T>& img);
 
 		struct Size {
-			int _w, _h, _n, _lods = -1;
+			int _w, _h, _d = 1, _n, _lods = 1;
 		};
 		
 		std::shared_ptr<Size> size;
@@ -726,28 +741,28 @@ namespace gloops {
 	inline Texture::Texture(const T& t, const TexParams& params)
 		: Texture(params)
 	{
-		createFromImage(ImageInfos<T>(t));
+		createFromImage2D(ImageInfos<T>(t));
 	}
 
 	template<typename T>
-	inline void Texture::createFromImage(const ImageInfos<T>& img)
+	inline void Texture::createFromImage2D(const ImageInfos<T>& img)
 	{
-		allocate(img.w(), img.h(), img.n());
-		uploadToGPU(0, 0, 0, w(), h(), img.data());
+		allocate2D(img.w(), img.h(), img.n());
+		uploadToGPU2D(0, 0, 0, w(), h(), img.data());
 	}
 
 	template<typename T>
-	inline void Texture::update(const T& t, const TexParams& _params)
+	inline void Texture::update2D(const T& t, const TexParams& _params)
 	{
 		ImageInfos<T> infos(t);
 
 		if (w() != infos.w() || h() != infos.h() || n() != infos.n() || changeRequiresReallocating(_params)) {
 			createGPUid();
 			update(_params);
-			createFromImage(infos);
+			createFromImage2D(infos);
 		} else {
 			update(_params);
-			uploadToGPU(0, 0, 0, infos.w(), infos.h(), infos.data());
+			uploadToGPU2D(0, 0, 0, infos.w(), infos.h(), infos.data());
 		}
 	}
 

@@ -468,7 +468,7 @@ namespace gloops {
 			glSev.lvl = SeveriyLevel::UNKNOWN;
 		}
 
-		if ((uint)glSev.lvl < (uint)SeveriyLevel::HIGH) {
+		if ((uint)glSev.lvl < (uint)SeveriyLevel::LOW) {
 			return;
 		}
 
