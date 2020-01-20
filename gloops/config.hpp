@@ -194,16 +194,16 @@ namespace gloops {
 		}
 
 		const int numCores = std::thread::hardware_concurrency();
-		const int numThreads = std::clamp(max_num_threads, 1, std::max(numCores - 1, 1));
+		const int numThreads = std::clamp(numCores - 1, 1, std::min(max_num_threads, numJobs));
 		const int numJobsPerThread = numJobs / numThreads + 1;
 
-		std::cout << numJobs << " " << numJobsPerThread << std::endl;
+		std::cout << "parallel for each : " << numCores << " cores availables, " << numJobs << " jobs divided into " << numThreads << " threads" << std::endl;
 
 		std::vector<std::thread> threads(numThreads);
 		for (int t = 0; t < numThreads; ++t) {
 			const int t_start = from_incl + t * numJobsPerThread;
 			const int t_end = std::min(from_incl + (t + 1) * numJobsPerThread, to_excl);
-			std::cout << "\t" << t_start << " " << t_end << std::endl;
+			//std::cout << "\t" << t_start << " " << t_end << std::endl;
 			threads[t] = std::thread([](F&& fun, const int from, const int to) {
 				for (int i = from; i < to; ++i) {
 					fun(i);
@@ -211,6 +211,11 @@ namespace gloops {
 			}, std::forward<F>(f), t_start, t_end);
 		}
 		std::for_each(threads.begin(), threads.end(), [](std::thread& t) { t.join(); });
+	}
+	
+	template<typename F>
+	void parallelForEach(int from_incl, int to_excl, F&& f) {
+		parallelForEach(from_incl, to_excl, std::forward<F>(f), 256);
 	}
 
 	template<typename T, int N>
