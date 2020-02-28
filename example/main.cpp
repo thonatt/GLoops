@@ -43,7 +43,7 @@ Texture& currentTex() {
 	return modes.at(currentMode).tex;
 }
 
-SubWindow checker_subwin() 
+SubWindow texture_subwin()
 {
 	static bool doReadback = false;
 	static v2d uv;
@@ -270,7 +270,7 @@ SubWindow mesh_modes_subwin()
 	struct ModeMesh {
 		Mode mode;
 		MeshGL mesh;
-		v4f color = v4f(1, 0, 0, 0.5f);
+		v4f color = v4f(1, 0, 0, 1.0f);
 		bool showNormals = false;
 	};
 	static bool showAllBB = true;
@@ -794,14 +794,6 @@ const std::string voxelgrid_frag_str = R"(
 			return ivec3(floor(vec3(gridSize) * uv));
 		}
 
-		bool check(vec3 v){
-			return !(any(isnan(v)) || any(isinf(v)));
-		}
-
-		bool checkCell(ivec3 c){
-			return all(greaterThanEqual(c, ivec3(0))) && all(greaterThanEqual(gridSize - 1, c));
-		}
-
 		float boxIntersection(vec3 rayDir) {
 			vec3 minTs = (bmin - eye_pos)/rayDir;
 			vec3 maxTs = (bmax - eye_pos)/rayDir;
@@ -876,7 +868,7 @@ SubWindow raymarching_win()
 {
 	SubWindow win = SubWindow("raymarching", v2i(400, 400));
 
-	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube().setScaling(0.2f));
+	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube().setScaling(0.4f));
 	tb.setFar(200);
 
 	win.setUpdateFunction([&](const Input& i) {
@@ -940,14 +932,14 @@ SubWindow raymarching_win()
 
 int main(int argc, char** argv)
 {
-	auto win_checkers = checker_subwin();
-	auto win_mesh_modes = mesh_modes_subwin();
-	auto win_raytracing = rayTracingWin();
-	auto win_raymarch = raymarching_win();
+	SubWindow win_textures = texture_subwin();
+	SubWindow win_mesh_modes = mesh_modes_subwin();
+	SubWindow win_raytracing = rayTracingWin();
+	SubWindow win_raymarch = raymarching_win();
 
 	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::FLOATING,
 		[&](const Window& win) {
-		ImGui::Checkbox("texture viewer", &win_checkers.active());
+		ImGui::Checkbox("texture viewer", &win_textures.active());
 		ImGui::SameLine();
 		ImGui::Checkbox("ray marching", &win_raymarch.active());
 		ImGui::Checkbox("mesh modes", &win_mesh_modes.active());
@@ -956,7 +948,7 @@ int main(int argc, char** argv)
 	});
 
 	mainWin.renderingLoop([&]{
-		win_checkers.show(mainWin);
+		win_textures.show(mainWin);
 		win_raymarch.show(mainWin);
 		win_mesh_modes.show(mainWin);
 		win_raytracing.show(mainWin);

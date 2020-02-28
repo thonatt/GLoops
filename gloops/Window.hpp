@@ -54,16 +54,12 @@ namespace gloops {
 		void resize(const Viewportd& vp);
 		const std::string& name() const;
 
-		//const Viewport& viewport() const;
-
 		bool isInFocus() const;
 		Type getType() const;
 
 		v4f backgroundColor = { 0,0,0,1 };
 
 		const v2f& weights() const;
-
-		//bool operator<(const WindowComponent& other) const;
 
 	protected:
 
