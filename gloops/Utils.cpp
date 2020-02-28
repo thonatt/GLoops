@@ -1,5 +1,5 @@
 #include "Utils.hpp"
 
-namespace rendering {
+namespace gloops {
 
 }

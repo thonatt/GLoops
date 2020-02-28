@@ -16,9 +16,7 @@ namespace gloops {
 
 		m3f rotation() const;
 
-		//returns (phi, theta, psi) such as R = R_z(phi) R_y(theta) R_x(psi)
 		v3f eulerAngles() const;
-
 		void setEulerAngles(const v3f& angles);
 
 		const v3f& scaling() const;
@@ -266,9 +264,7 @@ namespace gloops {
 	{
 		Mesh::setCPUattribute(name, data);
 
-		attributes_mapping[name] = VertexAttribute(
-			getAttribute<T>(name), location
-		);
+		attributes_mapping[name] = VertexAttribute(getAttribute<T>(name), location);
 
 		if (numElements == 0) {
 			numElements = static_cast<GLsizei>(data.size());

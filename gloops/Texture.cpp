@@ -5,83 +5,12 @@
 #include <iostream>
 #include <chrono>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "../extlibs/stb_image/stb_image.h"
-
 namespace gloops {
-
-	uchar* stbiImageLoad(const std::string& path, int& w, int& h, int& n)
-	{
-		return stbi_load(path.c_str(), &w, &h, &n, 0);
-	}
-
-	void stbiImageFree(uchar* ptr)
-	{
-		stbi_image_free(ptr);
-	}
-
-	Image3b checkersTexture(int w, int h, int size)
-	{
-		const int r = std::max(size, 1);
-
-		Image3b out(w, h);
-		for (int i = 0; i < h; ++i) {
-			for (int j = 0; j < w; ++j) {
-				int c = (i / r + j / r) % 2 ? 255 : 0;
-				out.pixel(j, i) = v3b(c, c, c);
-			}
-		}
-		return out;
-	}
-
-	Image1f perlinNoise(int w, int h, int size, int levels)
-	{
-		size = std::max(size, 1);
-
-		Image<float, 2> grads(w / size + 1, h / size + 1);
-		for (int i = 0; i < grads.h(); ++i) {
-			for (int j = 0; j < grads.w(); ++j) {
-				grads.pixel(j, i) = randomUnit<float, 2>();
-			}
-		}
-
-		Image1f out(w, h);
-
-		const float ratio = 1 / (float)size;
-		for (int i = 0; i < h; ++i) {
-			int iy = i / size;
-			float fy = i * ratio;
-			float dy = fy - (float)iy;
-
-			for (int j = 0; j < w; ++j) {
-				int ix = j / size;		
-				float fx = j * ratio;
-				float dx = fx - (float)ix;
-
-				float vx0 = smoothstep3(
-					grads.pixel(ix + 0, iy + 0).dot(v2f(fx - (ix + 0), fy - (iy + 0))),
-					grads.pixel(ix + 1, iy + 0).dot(v2f(fx - (ix + 1), fy - (iy + 0))),
-					dx
-				);
-
-				float vx1 = smoothstep3(
-					grads.pixel(ix + 0, iy + 1).dot(v2f(fx - (ix + 0), fy - (iy + 1))),
-					grads.pixel(ix + 1, iy + 1).dot(v2f(fx - (ix + 1), fy - (iy + 1))),
-					dx
-				);
-			
-				out.at(j, i) = smoothstep3(vx0, vx1, dy);
-			}
-		}
-
-		return out;
-	}
 
 	const TexParamsFormat TexParamsFormat::RGB = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_RGB);
 	const TexParamsFormat TexParamsFormat::BGR = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_BGR);
 	const TexParamsFormat TexParamsFormat::RGBA = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGBA8, GL_RGBA);
 	const TexParamsFormat TexParamsFormat::RGBA32F = TexParamsFormat(GL_TEXTURE_2D, GL_FLOAT, GL_RGBA32F, GL_RGBA);
-
 
 	Texture::Texture(const TexParams& params)
 		: TexParams(params)
@@ -113,6 +42,28 @@ namespace gloops {
 		return Texture(img, params);
 	}
 
+	Texture Texture::fromPathCube(const std::string& img_path, const TexParams& _params)
+	{
+		Image3b img;
+		img.load(img_path);
+
+		int w = img.w() / 4;
+		int h = img.h() / 3;
+
+		TexParams params(_params);
+		params.setTarget(GL_TEXTURE_CUBE_MAP);
+
+		Texture tex(params);
+		tex.allocateCube(w, h, img.n());
+
+		static const std::vector<int> faces = { 3, 1, 0, 5, 2, 4 }, offsetsX = { 1, 0, 1, 2, 3, 1 }, offsetsY = { 0, 1, 1, 1, 1, 2 }; 
+		for (int i = 0; i < faces.size(); ++i) {
+			tex.updateCubeFace(img.subImage(w * offsetsX[faces[i]], h * offsetsY[faces[i]], w, h), GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, params);
+		}
+
+		return tex;
+	}
+
 	void Texture::update(const TexParams& params)
 	{
 		static_cast<TexParams&>(*this) = params;
@@ -131,13 +82,11 @@ namespace gloops {
 
 		bind();
 		glTexStorage2D(target, nLods(), internal_format, w(), h());
-		gl_check();
 	}
 
 	void Texture::uploadToGPU2D(int lod, int xoffset, int yoffset, int width, int height, const void * data)
 	{
 		setAlignment();
-		bind();
 		glTexSubImage2D(target, lod, xoffset, yoffset, width, height, format, type, data);
 	}
 
@@ -160,8 +109,12 @@ namespace gloops {
 	void Texture::updloadToGPU3D(int lod, int xoffset, int yoffset, int zoffset, int width, int height, int depth, const void* data)
 	{
 		setAlignment();
-		bind();
 		glTexSubImage3D(target, lod, xoffset, yoffset, zoffset, width, height, depth, format, type, data);
+	}
+
+	void Texture::allocateCube(int width, int height, int nchannels)
+	{
+		allocate2D(width, height, nchannels);
 	}
 
 	void Texture::generateMipmaps() const
@@ -425,24 +378,10 @@ namespace gloops {
 
 	void Framebuffer::blitFrom(const Framebuffer& src, GLenum attach_from, GLenum attach_to, GLenum filter, GLbitfield mask)
 	{
-		gl_check();
-
-		bindDraw(attach_to);
-	
+		bindDraw(attach_to);	
 		src.bindRead(attach_from);
 
-		//gl_check();
-		//gl_framebuffer_check(GL_READ_FRAMEBUFFER);
-		//gl_framebuffer_check(GL_DRAW_FRAMEBUFFER);
-
-		//std::cout << "blit : " << src.w() << " " << src.h() << " " << w() << " " << h() << std::endl;
-
-		glBlitFramebuffer(0, 0, src.w(), src.h(),
-			0, 0, w(), h(), mask, filter);
-
-		//gl_check();
-		//gl_framebuffer_check(GL_READ_FRAMEBUFFER);
-		//gl_framebuffer_check(GL_DRAW_FRAMEBUFFER);
+		glBlitFramebuffer(0, 0, src.w(), src.h(), 0, 0, w(), h(), mask, filter);
 	}
 
 	void Framebuffer::blitFrom(const Texture& tex, GLenum attach_to, GLenum filter)
@@ -469,50 +408,22 @@ namespace gloops {
 
 	void Framebuffer::createDepth(int w, int h)
 	{
-
 		depth_id = GLptr(
 			[](GLuint* ptr) { glGenRenderbuffers(1, ptr); },
 			[](const GLuint* ptr) { glDeleteRenderbuffers(1, ptr); }
 		);
 
-		gl_check();
-
 		glBindRenderbuffer(GL_RENDERBUFFER, depth_id);
 		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32, w, h);
 
-		gl_check();
-
 		bind();
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_id);
-
-		gl_check();
 	}
 
 	LoaderManager LoaderManager::mainLoader = {};
 
 	LoaderManager::LoaderManager()
 	{
-		loadingThread = std::thread([&] {
-		
-			//std::this_thread::sleep_for(std::chrono::milliseconds(10000));
-			while (shouldContinue) {		
-				std::this_thread::sleep_for(std::chrono::milliseconds(10));
-				{
-					std::lock_guard<std::mutex> guard(tex_list_decoding_mutex);
-					if (tex_list_for_decoding.empty()) {
-						continue;
-					}
-					currentTexDecoding = tex_list_for_decoding.front();
-					tex_list_for_decoding.pop_front();			
-				}
-
-				currentTexDecoding->load_from_disk();
-				
-				std::lock_guard<std::mutex> guard(tex_list_upload_mutex);
-				tex_list_for_GPU_upload.push_back(currentTexDecoding);
-				//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-			}
-		});
 	}
 
 	LoaderManager::~LoaderManager()
@@ -522,16 +433,19 @@ namespace gloops {
 
 	void LoaderManager::addTexture(const Tex & tex)
 	{
+		if (!loadingThread.joinable()) {
+			startThread();
+		}
 		std::lock_guard<std::mutex> guard(tex_list_decoding_mutex);
 		tex_list_for_decoding.push_back(tex);
 	}
 
-	void LoaderManager::nextGPUtask()
+	bool LoaderManager::nextGPUtask()
 	{
 		if(!currentTexUpload){
 			std::lock_guard<std::mutex> guard(tex_list_upload_mutex);
 			if (tex_list_for_GPU_upload.empty()) {
-				return;
+				return threadShouldContinue;
 			}
 			currentTexUpload = tex_list_for_GPU_upload.front();
 			tex_list_for_GPU_upload.pop_front();
@@ -540,19 +454,65 @@ namespace gloops {
 		if (currentTexUpload->performNextGPUuploadTask() == TextureStatus::FINISHED) {
 			currentTexUpload.reset();
 		}
+
+		std::lock_guard<std::mutex> guardLoad(tex_list_decoding_mutex), guardUpload(tex_list_upload_mutex);
+		if (tex_list_for_decoding.empty() && tex_list_for_GPU_upload.empty() && !currentTexDecoding && !currentTexUpload ) {
+			std::cout << " no more jobs " << std::endl;
+			threadShouldContinue = false;
+			//endThread();
+		}
+
+		return threadShouldContinue;
 	}
 
 	void LoaderManager::release()
 	{
-		if (shouldContinue) {
-			shouldContinue = false;
-			loadingThread.join();
-		}	
+		endThread();
 	}
 
 	LoaderManager & LoaderManager::getMainLoader()
 	{
 		return mainLoader;
+	}
+
+	void LoaderManager::startThread()
+	{
+		std::cout << "start thread" << std::endl;
+
+		threadShouldContinue = true;
+
+		loadingThread = std::thread([&] {
+
+			//std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+			while (threadShouldContinue) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				{
+					std::lock_guard<std::mutex> guard(tex_list_decoding_mutex);
+					if (tex_list_for_decoding.empty()) {
+						continue;
+					}
+					currentTexDecoding = tex_list_for_decoding.front();
+					tex_list_for_decoding.pop_front();
+				}
+
+				currentTexDecoding->load_from_disk();
+
+				std::lock_guard<std::mutex> guard(tex_list_upload_mutex);
+				tex_list_for_GPU_upload.push_back(currentTexDecoding);
+				currentTexDecoding.reset();
+				//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+			}
+
+			std::cout << " end thread " << std::endl;
+		});
+	}
+
+	void LoaderManager::endThread()
+	{
+		threadShouldContinue = false;
+		if (loadingThread.joinable()) {
+			loadingThread.join();
+		}
 	}
 
 	int TextureManager::tile_size_bytes = 2048 * 2048 * 3;
@@ -567,8 +527,6 @@ namespace gloops {
 		img_ptr.reset(new Image3b());
 		img_ptr->load(path);
 		img_loaded = true;
-
-		//std::cout << path << " loaded" << std::endl;
 	}
 
 	void TextureManager::update_to_gpu()

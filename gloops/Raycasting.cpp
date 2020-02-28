@@ -76,61 +76,54 @@ namespace gloops {
 		sceneReady = other.sceneReady;
 
 		for (const auto& mesh : meshes) {
-			setupMeshCallbacks(mesh.second.mesh);
+			setupMeshCallbacks(mesh.second);
 		}
 
 		return *this;
 	}
 
-	void Raycaster::addMeshInternal(const Mesh & mesh)
+	void Raycaster::addMeshInternal(const Mesh& mesh)
 	{
 		ScenePtr localScene = ScenePtr(rtcNewScene(device.get()), rtcReleaseScene);
 
 		GeometryPtr geometry = GeometryPtr(rtcNewGeometry(
 			device.get(), RTCGeometryType::RTC_GEOMETRY_TYPE_TRIANGLE), rtcReleaseGeometry);
 
-		using Triangle = Mesh::Tri;
-		using Vertice = Mesh::Vert;
-
-		const auto& tris = mesh.getTriangles();
-		const auto& verts = mesh.getVertices();
-
-		Triangle* dst_tris = reinterpret_cast<Triangle*>(rtcSetNewGeometryBuffer(
-			geometry.get(), RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, sizeof(Triangle), tris.size()));
-		for (uint i = 0; i < tris.size(); ++i, ++dst_tris) {
-			*dst_tris = tris[i];
-		}
-
-		Vertice* dst_verts = reinterpret_cast<Vertice*>(rtcSetNewGeometryBuffer(
-			geometry.get(), RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(Vertice), verts.size()));
-		for (uint i = 0; i < verts.size(); ++i, ++dst_verts) {
-			*dst_verts = verts[i]; //applyTransformationMatrix(mesh.model(), verts[i]);
-		}
-		rtcCommitGeometry(geometry.get());
-
-		rtcAttachGeometry(localScene.get(), geometry.get());
-		rtcCommitScene(localScene.get());
-
 		GeometryPtr instance = GeometryPtr(rtcNewGeometry(
 			device.get(), RTCGeometryType::RTC_GEOMETRY_TYPE_INSTANCE), rtcReleaseGeometry);
+
+		rtcAttachGeometry(localScene.get(), geometry.get());
 
 		rtcSetGeometryInstancedScene(instance.get(), localScene.get());
 		rtcSetGeometryTimeStepCount(instance.get(), 1);
 
 		uint instance_id = rtcAttachGeometry(scene.get(), instance.get());
 
-		meshes[instance_id] = { mesh, instance };
+		meshes[instance_id] = { mesh, instance, geometry, localScene };
 
-		setupMeshCallbacks(mesh);
+		setupMeshCallbacks(meshes.at(instance_id));
 		
 		*sceneReady = false;
 	}
 
-	void Raycaster::setupMeshCallbacks(const Mesh& mesh)
+	void Raycaster::setupMeshCallbacks(const MeshRaycastingData& data)
 	{
-		mesh.addModelCallback([&] {  
-			//std::cout << "model cb " << std::flush;
-			return sceneReady && !(*sceneReady = false);
+		data.mesh.addModelCallback([&] {  
+			if (sceneReady) {
+				*data.dirtyModel = true;
+				*sceneReady = false;
+				return true;
+			}
+			return false;
+		});
+
+		data.mesh.addGeometryCallback([&] {
+			if (sceneReady) {
+				*data.dirtyGeometry = true;
+				*sceneReady = false;
+				return true;
+			}
+			return false;
 		});
 	}
 
@@ -157,8 +150,37 @@ namespace gloops {
 		if (!(*sceneReady)) {
 			for (const auto& mesh : meshes) {
 				const auto& m = mesh.second;
-				rtcSetGeometryTransform(m.instance.get(), 0, RTCFormat::RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, m.mesh.model().data());
-				rtcCommitGeometry(m.instance.get());
+
+				if (*m.dirtyGeometry) {
+					using Triangle = Mesh::Tri;
+					using Vertice = Mesh::Vert;
+
+					const auto& tris = m.mesh.getTriangles();
+					const auto& verts = m.mesh.getVertices();
+
+					Triangle* dst_tris = reinterpret_cast<Triangle*>(rtcSetNewGeometryBuffer(
+						m.geometry.get(), RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, sizeof(Triangle), tris.size()));
+					for (uint i = 0; i < tris.size(); ++i, ++dst_tris) {
+						*dst_tris = tris[i];
+					}
+
+					Vertice* dst_verts = reinterpret_cast<Vertice*>(rtcSetNewGeometryBuffer(
+						m.geometry.get(), RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(Vertice), verts.size()));
+					for (uint i = 0; i < verts.size(); ++i, ++dst_verts) {
+						*dst_verts = verts[i]; //applyTransformationMatrix(mesh.model(), verts[i]);
+					}
+					rtcCommitGeometry(m.geometry.get());
+					rtcCommitScene(m.scene.get());
+					*m.dirtyGeometry = false;
+				}
+
+				if (*m.dirtyModel) {
+					rtcSetGeometryTransform(m.instance.get(), 0, RTCFormat::RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, m.mesh.model().data());
+					rtcCommitGeometry(m.instance.get());
+
+					*m.dirtyModel = false;
+				}
+				
 			}
 
 			rtcCommitScene(scene.get());

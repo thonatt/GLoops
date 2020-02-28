@@ -92,8 +92,7 @@ namespace gloops {
 
 		_transform = std::make_shared<Transform4>();
 		modelCallbacks = std::make_shared<std::list<CB>>();
-		//transformWasChanged = std::make_shared<bool>(true);
-
+		geometryCallbacks = std::make_shared<std::list<CB>>();
 	}
 
 	const Mesh::Vertices& Mesh::getVertices() const
@@ -348,7 +347,6 @@ namespace gloops {
 
 	void MeshGL::updateLocations() const
 	{
-
 		glBindVertexArray(vao);
 		glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
 
@@ -360,7 +358,6 @@ namespace gloops {
 		glBindVertexArray(0);
 
 		dirtyLocations = false;
-
 	}
 
 	bool Mesh::load(const std::string& path)
@@ -386,19 +383,6 @@ namespace gloops {
 			std::cout << " no meshes at " << path << std::endl;
 			return false;
 		}
-
-		//aiMatrix4x4 t = scene->mRootNode->mTransformation;
-
-		//auto coutT = [](const aiMatrix4x4& t) {
-		//	std::cout <<
-		//		t.a1 << " " << t.a2 << " " << t.a3 << " " << t.a4 << " " << std::endl <<
-		//		t.b1 << " " << t.b2 << " " << t.b3 << " " << t.b4 << " " << std::endl <<
-		//		t.c1 << " " << t.c2 << " " << t.c3 << " " << t.c4 << " " << std::endl <<
-		//		t.d1 << " " << t.d2 << " " << t.d3 << " " << t.d4 << " " << std::endl;
-		//};
-
-		//coutT(t);
-			
 
 		auto vConverter = [](const aiVector3D& v) { return v3f(v.x, v.y, v.z); };
 		auto tConverter = [](const aiFace& f) { return v3u(f.mIndices[0], f.mIndices[1], f.mIndices[2]); };
@@ -570,39 +554,41 @@ namespace gloops {
 	}
 
 
-	Mesh Mesh::getSphere(uint precision)
+	Mesh Mesh::getSphere(uint _precision)
 	{
-		precision = std::max(precision, 2u);
-
-		Vertices vertices(static_cast<size_t>(precision) * precision);
+		const size_t precision = std::max(_precision, 2u);
+		
+		Vertices vertices((precision + 1) * precision);
 		Normals normals(vertices.size());
-		Triangles triangles(2u * static_cast<size_t>(precision - 1) * (precision - 1));
 		UVs uvs(vertices.size());
 
-		float frac_p = 1.0f / ((float)precision - 1.0f);
-		float frac_t = 1.0f / ((float)precision - 1.0f);
+		Triangles triangles(2 * precision * (precision - 1));
+		
+		const float frac_p = 1.0f / (float)precision;
+		const float frac_t = 1.0f / ((float)precision - 1.0f);;
+
 		for (size_t t = 0; t < precision; ++t) {
 			const float theta = t * frac_t * pi<float>();
 			const float cost = std::cos(theta), sint = std::sin(theta);
 
-			for (size_t p = 0; p < precision; ++p) {
+			for (size_t p = 0; p < precision + 1; ++p) {
 				const float phi = p * frac_p * 2 * pi<float>();
 				const float cosp = std::cos(phi), sinp = std::sin(phi);
-				vertices[p + precision * t] = v3f(sint * cosp, sint * sinp, cost);
-				normals[p + precision * t] = vertices[p + precision * t];
-				uvs[p + precision * t] = v2f(t / (float)precision, p / (float)precision);
+				vertices[p + (precision + 1) * t] = v3f(sint * cosp, sint * sinp, cost);
+				normals[p + (precision + 1) * t] = vertices[p + (precision + 1) * t];
+				uvs[p + (precision + 1) * t] = v2f(t * frac_t, p * frac_p);
 			}
 		}
 
-		uint tri_id = 0;
-		for (uint t = 0; t < precision - 1; ++t) {
-			for (uint p = 0; p < precision - 1; ++p, tri_id += 2) {
-				uint current_id = p + precision * t;
-				uint next_in_row = current_id + 1;
-				uint next_in_col = current_id + precision;
-				uint next_next = next_in_col + 1;
-				triangles[tri_id] = { current_id, next_in_col, next_in_row };
-				triangles[tri_id + 1] = { next_in_row, next_in_col, next_next };
+		size_t tri_id = 0;
+		for (size_t t = 0; t < precision - 1; ++t) {
+			for (size_t p = 0; p < precision; ++p, tri_id += 2) {
+				size_t current_id = p + (precision + 1) * t;
+				size_t next_in_row = current_id + 1;
+				size_t next_in_col = current_id + precision + 1;
+				size_t next_next = next_in_col + 1;
+				triangles[tri_id] = v3u((uint)current_id, (uint)next_in_col, (uint)next_in_row);
+				triangles[tri_id + 1] = v3u((uint)next_in_row, (uint)next_in_col, (uint)next_next);
 			}
 		}
 
@@ -614,40 +600,41 @@ namespace gloops {
 		return mesh;
 	}
 
-	Mesh Mesh::getTorus(float R, float r, uint precision)
+	Mesh Mesh::getTorus(float R, float r, uint _precision)
 	{
-		precision = std::max(precision, 2u);
+		const size_t precision = std::max(_precision, 2u);
 
-		Vertices vertices(static_cast<size_t>(precision)* precision);
+		Vertices vertices((precision + 1) * precision);
 		Normals normals(vertices.size());
-		Triangles triangles(2u * static_cast<size_t>(precision - 1) * (precision - 1));
 		UVs uvs(vertices.size());
+		Triangles triangles(2 * precision  * (precision - 1));
+	
+		const float frac = 1.0f / (float)(precision - 1.0f);
+		const float frac_uv = 1.0f / (float)precision;
 
-		float frac_p = 1.0f / (float)(precision - 1.0f);
-		float frac_t = 1.0f / ((float)precision - 1.0f);
 		for (size_t t = 0; t < precision; ++t) {
-			const float theta = (t * frac_t * 2 + 1) * pi<float>();
+			const float theta = (t * frac * 2 + 1) * pi<float>();
 			const float cost = std::cos(theta), sint = std::sin(theta);
 			const v2f pos = v2f(R + r * cost, r * sint);
 
-			for (size_t p = 0; p < precision; ++p) {
-				const float phi = p * frac_p * 2 * pi<float>();
+			for (size_t p = 0; p < precision + 1; ++p) {
+				const float phi = p * frac_uv * 2 * pi<float>();
 				const float cosp = std::cos(phi), sinp = std::sin(phi);
-				vertices[p + precision * t] = v3f(pos[0] * cosp, pos[0] * sinp, pos[1]);
-				normals[p + precision * t] = v3f(cost * cosp, cost * sinp, sint);
-				uvs[p + precision * t] = v2f(t / (float)precision, p / (float)precision);
+				vertices[p + (precision + 1) * t] = v3f(pos[0] * cosp, pos[0] * sinp, pos[1]);
+				normals[p + (precision + 1) * t] = v3f(cost * cosp, cost * sinp, sint);
+				uvs[p + (precision + 1) * t] = v2f(t * frac_uv, p * frac_uv);
 			}
 		}
 
-		uint tri_id = 0;
-		for (uint t = 0; t < precision - 1; ++t) {
-			for (uint p = 0; p < precision - 1; ++p, tri_id += 2) {
-				uint current_id = p + precision * t;
-				uint next_in_row = current_id + 1;
-				uint next_in_col = current_id + precision;
-				uint next_next = next_in_col + 1;
-				triangles[tri_id] = { current_id, next_in_row, next_in_col };
-				triangles[tri_id + 1] = { next_in_row, next_next, next_in_col  };
+		size_t tri_id = 0;
+		for (size_t t = 0; t < precision - 1; ++t) {
+			for (size_t p = 0; p < precision; ++p, tri_id += 2) {
+				size_t current_id = p + (precision + 1) * t;
+				size_t next_in_row = current_id + 1;
+				size_t next_in_col = current_id + precision + 1;
+				size_t next_next = next_in_col + 1;
+				triangles[tri_id] = v3u((uint)current_id, (uint)next_in_row, (uint)next_in_col);
+				triangles[tri_id + 1] = v3u((uint)next_in_row, (uint)next_next, (uint)next_in_col);
 			}
 		}
 
@@ -682,8 +669,8 @@ namespace gloops {
 
 		Mesh::Vertices vertices(4 * 6);
 		Mesh::UVs uvs(4 * 6);
-		for (int f = 0; f < 6; ++f) {
-			for (int v = 0; v < 4; ++v) {
+		for (size_t f = 0; f < 6; ++f) {
+			for (size_t v = 0; v < 4; ++v) {
 				vertices[4 * f + v] = box.corner((Box::CornerType)corners[f][v]);
 				uvs[4 * f + v] = v2f(v / 2, v % 2);
 			}
@@ -716,9 +703,11 @@ namespace gloops {
 	void Mesh::invalidateGeometry()
 	{
 		dirtyBox = true;
-		//for (const auto& callback : *geometryCallbacks) {
-		//	//callback();
-		//}
+		for (auto callback_it = geometryCallbacks->begin(); callback_it != geometryCallbacks->end(); ++callback_it) {
+			if (!(*callback_it)()) {
+				geometryCallbacks->erase(callback_it);
+			}
+		}
 	}
 
 	MeshGL MeshGL::getCubeLines(const Box& box)

@@ -387,10 +387,10 @@ namespace gloops {
 
 		MeshGL getQuad(T dist) const
 		{
-			static Mesh::Vertices vertices(3);
+			Mesh::Vertices vertices(3);
 			auto corners_rays = getCornersRays();
 			for (int c = 0; c < 3; ++c) {
-				vertices[c] = corners_rays[c].pointAt(dist);
+				vertices[c] = corners_rays[c].pointAt(dist). template cast<float>();
 			}
 
 			const v3f center = 0.5 * (vertices[0] + vertices[2]);
@@ -405,7 +405,7 @@ namespace gloops {
 				{0,0,4},{1,1,5},{2,2,6},{3,3,7},
 			};
 
-			static Mesh::Vertices vertices(8);
+			Mesh::Vertices vertices(8);
 			auto corners_rays = getCornersRays();
 			for (int k = 0; k < 2; k++) {
 				float dist = (k == 0 ? near : far);
@@ -428,7 +428,7 @@ namespace gloops {
 		}
 		
 		std::vector<Ray> getCornersRays() const {
-			auto corners = getCorners();
+			const auto corners = getCorners();
 			std::vector<Ray> corners_dirs(4);
 			for (uint i = 0; i < 4; ++i) {
 				corners_dirs[i] = getRay(corners[i]);
@@ -474,9 +474,9 @@ namespace gloops {
 
 		Trackball(const Cam& cam, T r)
 		{
-			eye = cam.position();
-			center = eye + r * cam.dir();
-			up = cam.up();
+			_eye = cam.position();
+			_center = _eye + r * cam.dir();
+			_up = cam.up();
 			_camera = cam;
 			dirty = true;
 		}
@@ -488,18 +488,18 @@ namespace gloops {
 
 		void setExtrinsics(const Cam& cam)
 		{
-			T dist = (eye - center).norm();
-			eye = cam.position();
-			center = eye + dist * cam.dir();
-			up = cam.up();
+			T dist = (_eye - _center).norm();
+			_eye = cam.position();
+			_center = _eye + dist * cam.dir();
+			_up = cam.up();
 			dirty = true;
 		}
 
-		Trackball& setLookAt(const v3& _eye, const v3& _target, const v3& _up = { 0,1,0 }) 
+		Trackball& setLookAt(const v3& eye, const v3& target, const v3& up = { 0,1,0 }) 
 		{
-			eye = _eye;
-			center = _target;
-			up = _up;
+			_eye = eye;
+			_center = target;
+			_up = up;
 			dirty = true;
 			return *this;
 		}
@@ -551,13 +551,13 @@ namespace gloops {
 
 		void setRadius(T radius)
 		{
-			eye = center + radius * (eye - center).normalized();
+			_eye = center() + radius * (eye() - center()).normalized();
 			dirty = true;
 		}
 
 		T radius() const
 		{
-			return (eye - center).norm();
+			return (eye() - center()).norm();
 		}
 
 		void setNear(T near)
@@ -604,7 +604,7 @@ namespace gloops {
 
 		void setCenter(const v3& pos)
 		{
-			center = pos;
+			_center = pos;
 			dirty = true;
 		}
 
@@ -613,12 +613,22 @@ namespace gloops {
 			return raycaster;
 		}
 
+		const v3& eye() const {
+			return _eye;
+		}
+		const v3& center() const {
+			return _center;
+		}
+		const v3& up() const {
+			return _up;
+		}
+
 	protected:
 
 		void checkCam() const
 		{
 			if (dirty) {
-				_camera.setLookAt(eye, center, up);
+				_camera.setLookAt(_eye, _center, _up);
 				dirty = false;
 			}
 		}
@@ -626,7 +636,7 @@ namespace gloops {
 		void updateRadius(const Input& i)
 		{
 			if (status == IDLE && i.scrollY() != 0 && !i.keyActive(GLFW_KEY_LEFT_CONTROL)) {
-				eye = center + pow(1.1, -i.scrollY()) * (eye - center);
+				_eye = center() + pow(1.1, -i.scrollY()) * (eye() - center());
 				dirty = true;
 			}
 		}
@@ -645,7 +655,7 @@ namespace gloops {
 				currentUV = i. template mousePositionUV<T>();
 
 				if (i.buttonUnclicked(GLFW_MOUSE_BUTTON_LEFT)) {
-					getTmpTrackBall(eye, center, up);
+					getTmpTrackBall(_eye, _center, _up);
 					status = IDLE;
 					dirty = true;
 				}
@@ -662,7 +672,7 @@ namespace gloops {
 			if (status == TRANSLATION) {
 				currentUV = i. template mousePositionUV<T>();
 				if (i.buttonUnclicked(GLFW_MOUSE_BUTTON_RIGHT)) {
-					getTmpTrackBall(eye, center, up);
+					getTmpTrackBall(_eye, _center, _up);
 					status = IDLE;
 					dirty = true;
 				}
@@ -674,12 +684,13 @@ namespace gloops {
 			if (status == IDLE && i.keyActive(GLFW_KEY_LEFT_CONTROL) && i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
 
 				RaycastingCamera<T> cam(getCamera(), (int)i.viewport().width(), (int)i.viewport().height());
-				auto ray = cam.getRay(i.mousePosition<float>());
+				RayT<float> ray = cam.getRay(i.mousePosition<T>()). template cast<float>();
 
 				Hit hit = raycaster.intersect(ray);
 				if (hit.successful()) {
-					v3 intersection_pt = ray.pointAt(hit.distance());
-					center = intersection_pt;
+					v3 intersection_pt = ray.pointAt(hit.distance()). template cast<T>();
+					_center = intersection_pt;
+					dirty = true;
 				} 
 			}
 		}
@@ -697,7 +708,7 @@ namespace gloops {
 
 		void getTmpTrackBall(v3& out_eye, v3& out_center, v3& out_up) const
 		{
-			v3 tmp_eye = eye, tmp_center = center, tmp_up = up;
+			v3 tmp_eye = _eye, tmp_center = _center, tmp_up = _up;
 			v2 delta_uv = currentUV - clickedUV;
 
 			if (status == ROTATION || status == ROLL) {
@@ -726,7 +737,7 @@ namespace gloops {
 		v2 clickedUV, currentUV;
 		Status status = IDLE;
 
-		v3 center, eye, up;
+		v3 _center, _eye, _up;
 
 		mutable Cam _camera;
 		mutable bool dirty = false;

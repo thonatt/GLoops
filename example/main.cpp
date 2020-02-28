@@ -2,10 +2,12 @@
 #include <gloops/Mesh.hpp>
 #include <gloops/Camera.hpp>
 #include <gloops/Shader.hpp>
+#include <gloops/Texture.hpp>
 
 #include <map>
 #include <limits>
 
+//dont try this at home
 using namespace gloops;
 
 bool colPicker(const std::string& s, float* ptr, uint flag = 0) {
@@ -17,9 +19,11 @@ bool colPicker(const std::string& s, float* ptr, uint flag = 0) {
 static Window mainWin = Window("GLoops demos");
 
 static TexParams texParams = TexParams().enableMipmap().setMagFilter(GL_NEAREST);
+static TexParams cubeParams = TexParams().disableMipmap().setTarget(GL_TEXTURE_CUBE_MAP).setWrapAll(GL_CLAMP_TO_EDGE);
 
 Texture checkers_tex = Texture(checkersTexture(80, 80, 10), texParams), perlinTex, 
-	kittenTex = Texture::fromPath2D("../../kitten.png", texParams);
+	kittenTex = Texture::fromPath2D("../../kitten.png", texParams),
+	skyCube = Texture::fromPathCube("../../sky.png", cubeParams);
 
 enum class TexMode { CHECKERS, PERLIN, KITTEN };
 struct ModeData {
@@ -62,8 +66,6 @@ SubWindow checker_subwin()
 	};
 
 	static const std::map<GLenum, std::string> min_filters = {
-		//{ GL_NEAREST, "NEAREST" },
-		//{ GL_LINEAR , "LINEAR" },
 		{ GL_NEAREST_MIPMAP_NEAREST , "N_MIPMAP_N" },
 		{ GL_LINEAR_MIPMAP_NEAREST , "L_MIPMAP_N" },
 		{ GL_NEAREST_MIPMAP_LINEAR , "N_MIPMAP_L" },
@@ -113,7 +115,7 @@ SubWindow checker_subwin()
 			colChanged |= colPicker("second", &colB[0]);
 			if (colChanged) {	
 				Image3b img = (perlin * colA + (1 - perlin) * colB).convert<uchar>(255);
-				perlinTex.update2D(img, texParams);
+				currentTex().update2D(img, texParams);
 				colChanged = false;
 			}
 		}
@@ -196,8 +198,6 @@ SubWindow checker_subwin()
 	},
 		[&](Framebuffer& dst)
 	{
-		//dst.blitFrom(modes.at(currentMode).tex, GL_COLOR_ATTACHMENT0, filter);
-
 		static MeshGL screenQuad;
 		const v2f uvCenter = texCenter;
 		const v2f tl = uvCenter + v2f(1.0f - zoomLevel, zoomLevel), br = uvCenter + v2f(zoomLevel, 1.0f - zoomLevel);
@@ -221,11 +221,6 @@ SubWindow checker_subwin()
 
 			ImGui::BeginTooltip();
 			ImGui::Image(zoom.getId(), { 100, 100 }, { 0,1 }, { 1,0 });
-			//std::stringstream s;
-			//s << "click " << clickedPosition.transpose() << std::endl;
-			//s << "texcenter " << texCenter.transpose() << std::endl;
-			//s << "prev " << previousCenter.transpose() << std::endl;
-			//ImGui::Text(s);
 			ImGui::EndTooltip();
 		}
 
@@ -316,6 +311,7 @@ SubWindow mesh_modes_subwin()
 		}
 	
 		auto& mesh = meshes.at(selectedMesh);
+		auto& meshGL = mesh.mesh;
 
 		ImGui::SameLine();
 		ImGui::Checkbox("Show normals", &mesh.showNormals);
@@ -339,31 +335,49 @@ SubWindow mesh_modes_subwin()
 		}
 
 		static v3f pos, rot;
-		pos = mesh.mesh.transform().translation();
+		pos = meshGL.transform().translation();
 		if (ImGui::SliderFloat3("Translation", pos.data(), -5, 5)) {
-			mesh.mesh.setTranslation(pos);
+			meshGL.setTranslation(pos);
 		}
-		rot = mesh.mesh.transform().eulerAngles();
+		rot = meshGL.transform().eulerAngles();
 		if (ImGui::SliderFloat3("Rotation", rot.data(), -2.0f * pi<float>(), 2.0f * pi<float>())) {
-			mesh.mesh.setRotation(rot);
+			meshGL.setRotation(rot);
 		}
 		static float scale;
-		scale = mesh.mesh.transform().scaling()[0];
-		if (ImGui::SliderFloat("Scale", &scale, 0, 5)) {
-			mesh.mesh.setScaling(scale);
-		}
+		scale = meshGL.transform().scaling()[0];
+		ImGui::ItemWithSize(175, [&] {
+			if (ImGui::SliderFloat("Scale", &scale, 0, 5)) {
+				meshGL.setScaling(scale);
+			}
 
-		const auto& m = mesh.mesh;
+			static int precision = 50;
+			if (selectedMesh <= 2) {
+				ImGui::SameLine();
+				if (ImGui::SliderInt("Precision", &precision, 3, 50)) {
+					Mesh novelMesh;
+					if (selectedMesh == 2) {
+						novelMesh = Mesh::getSphere(precision);
+					} else {
+						novelMesh = Mesh::getTorus(3, 1, precision);
+					}
+					meshGL.setVertices(novelMesh.getVertices());
+					meshGL.setTriangles(novelMesh.getTriangles());
+					meshGL.setUVs(novelMesh.getUVs());
+					meshGL.setNormals(novelMesh.getNormals());
+				}
+			}
+		});
+		
 		if (ImGui::TreeNode("mesh infos")) {
 			std::stringstream h;
-			h << "num vertices : " << m.getVertices().size() << "\n";
-			h << "num triangles : " << m.getTriangles().size() << "\n";
+			h << "num vertices : " << meshGL.getVertices().size() << "\n";
+			h << "num triangles : " << meshGL.getTriangles().size() << "\n";
 			ImGui::Text(h);
 			ImGui::TreePop();
 		}
 		if (ImGui::TreeNode("vertex data attributes")) {
 			std::map<int, std::pair<std::string, VertexAttribute> > attributes_sorted_by_location;
-			for (const auto& attribute : m.getAttributes()) {
+			for (const auto& attribute : meshGL.getAttributes()) {
 				attributes_sorted_by_location[attribute.second.index] = { attribute.first, attribute.second };
 			}
 			for (const auto& attribute : attributes_sorted_by_location) {
@@ -389,10 +403,10 @@ SubWindow mesh_modes_subwin()
 
 		if (hit.successful()) {
 
-			int id = (int)std::round(tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id"));
+			int id = (int)tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id");
 
 			ImGui::BeginTooltip();
-			ImGui::Text("Click to " + std::string(id == selectedMesh ? "un" : "") + "select : " + std::to_string(hit.instanceId()));
+			ImGui::Text("Click to " + std::string(id == selectedMesh ? "un" : "") + "select mesh with id : " + std::to_string(hit.instanceId()));
 			ImGui::EndTooltip();
 
 			if (i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
@@ -466,12 +480,13 @@ SubWindow mesh_modes_subwin()
 SubWindow rayTracingWin()
 {
 	//setup Cornell Box
+
 	static MeshGL outerBox = Mesh::getCube().invertFaces(),
 		innerBoxA = Mesh::getCube().setScaling(0.4f).setTranslation(v3f(-0.4f, -0.3f, -0.1f)),
 		innerBoxB = Mesh::getCube().setScaling(0.3f).setTranslation(v3f(0.4f, -0.5f, 0.1f));
 
 	std::vector<v3f> colorsOut(outerBox.getVertices().size(), v3f::Ones());
-	for (int i = 0; i < 4; ++i) {
+	for (size_t i = 0; i < 4; ++i) {
 		colorsOut[8 + i] = v3f(1, 0, 0);
 		colorsOut[12 + i] = v3f(0, 1, 0);
 	}
@@ -480,8 +495,13 @@ SubWindow rayTracingWin()
 	innerBoxA.setColors(std::vector<v3f>(innerBoxA.getVertices().size(), { 0,0,1 }));
 	innerBoxB.setColors(std::vector<v3f>(innerBoxB.getVertices().size(), { 1,0,1 }));
 
-	static const v3f lightPosition = 0.9*v3f::UnitY(), lightColor = v3f::Ones();
-
+	static const v3f lightPosition = 0.9 * v3f::UnitY(), lightColor = v3f::Ones();
+	static const float lightSize = 0.4f;
+	static auto surfaceLightPosition = []() -> v3f {
+		const v2f uvs = randomVec<float, 2>();
+		return lightPosition + lightSize * (v3f::UnitX() * uvs[0] + v3f::UnitZ() * uvs[1]);
+	};;
+		
 	//setup raycaster, camera and buffers
 
 	using Ray = RayT<float>;
@@ -497,12 +517,11 @@ SubWindow rayTracingWin()
 	static Image3f currentSamplesAverage;
 	static Texture tex;
 
-	enum class Mode { COLOR, DIRECT_LIGHT, NORMAL, POSITION, DEPTH };
+	enum class Mode { COLOR, NORMAL, POSITION, DEPTH };
 	static const std::map<Mode, std::string> modes = {
 		{ Mode::DEPTH, "Depth" },
 		{ Mode::POSITION, "Position" },
 		{ Mode::NORMAL, "Normal" },
-		{ Mode::DIRECT_LIGHT, "Direct" },
 		{ Mode::COLOR, "Color" }
 	};
 	static Mode mode = Mode::COLOR;
@@ -527,17 +546,21 @@ SubWindow rayTracingWin()
 			++mode_id;
 		}
 		ImGui::Separator();
-		ImGui::PushItemWidth(150);
-		resetRayCasting |= ImGui::SliderInt("num bounces", &numBounces, 1, 3);
-		resetRayCasting |= ImGui::SliderInt("samples per pixel per frame", &samplesPerPixel, 1, 4);
-		resetRayCasting |= ImGui::SliderInt("max samples per pixel", &maxNumSamples, 1, 128);
+		ImGui::ItemWithSize(150, [] {
+			resetRayCasting |= ImGui::SliderInt("num bounces", &numBounces, 1, 3);
+			resetRayCasting |= ImGui::SliderInt("max samples per pixel", &maxNumSamples, 1, 128);
 
-		resetRayCasting |= ImGui::Checkbox(
-			("use multi-threading, " + std::to_string(std::thread::hardware_concurrency()) + " available cores").c_str(),
-			&useMT
-		);
-		ImGui::SameLine();		resetRayCasting |= ImGui::SliderInt("max num threads", &maxNumThreads, 1, 16);
-		ImGui::PopItemWidth();
+			resetRayCasting |= ImGui::Checkbox(
+				("use multi-threading, " + std::to_string(std::thread::hardware_concurrency()) + " available cores").c_str(),
+				&useMT
+			);
+			if (useMT) {
+				ImGui::SameLine();
+				resetRayCasting |= ImGui::SliderInt("used threads", &maxNumThreads, 1, 16);
+			} else {
+				maxNumThreads = 1;
+			}
+		});
 
 		std::stringstream s;
 		s << "current num samples per pixel : " << currentNumSamples << " / " << maxNumSamples;
@@ -632,40 +655,39 @@ SubWindow rayTracingWin()
 							continueRT = false; continue;
 						}
 						default: {
-							//raycaster.visible(p, lightPosition, dir, distToLight)
-							float distToLight = (lightPosition - p).norm();
-							v3f dir = (lightPosition - p) / distToLight;
-							if (!raycaster.occlusion(Ray(p, dir), 0.001f*distToLight, 0.999f*distToLight)) {
+
+							if ((p - lightPosition).cwiseAbs().maxCoeff() < lightSize) {
+								sampleColor = lightColor;
+								continueRT = false; continue;
+							}
+							const v3f randomLightPos = surfaceLightPosition();
+							float distToLight = (randomLightPos - p).norm();
+
+							v3f dir = (randomLightPos - p) / distToLight;
+							if (!raycaster.occlusion(Ray(p, dir), 0.001f * distToLight, 0.999f * distToLight)) {
 								const float diffuse = std::max(dir.dot(n), 0.0f);
 								const float attenuation = std::clamp<float>(1.0f - (distToLight * distToLight) / (2.5f * 2.5f), 0, 1);
 
-								if (mode == Mode::DIRECT_LIGHT) {
-									const float l = diffuse * attenuation;
-									sampleColor = v3f(l, l, l);
-									continueRT = false; continue;
-								}
-
 								v3f illumination = (diffuse * attenuation) * lightColor;
-								color = color.cwiseProduct(col);
-								sampleColor += color.cwiseProduct(illumination);
+								color = 0.9 * color.cwiseProduct(col);
+								//sampleColor += color.cwiseProduct(illumination);
+
+								sampleColor += color.cwiseProduct(lightColor) * diffuse;
 
 								if (gatherPaths && j == clicked[0] && i == clicked[1]) {
 									paths.push_back(ray.origin());
 									paths.push_back(p);
 									normals.push_back(p);
 									normals.push_back(p + 0.1 * n);
-									colors.push_back(sampleColor);
-									colors.push_back(sampleColor);
+									colors.push_back(color.cwiseProduct(lightColor)* diffuse);
+									colors.push_back(color.cwiseProduct(lightColor)* diffuse);
 								}
-							} else if (mode == Mode::DIRECT_LIGHT) {
-								sampleColor = v3f::Zero();
-								continueRT = false;
 							}
 						}
 						}
 
-						if (b < (numBounces - 1)) {
-							ray = RayT<float>(p, (n + randomUnit<float, 3>()).normalized());
+						if (b < (numBounces - 1) && continueRT) {
+							ray = Ray(p, (n + randomUnit<float, 3>()).normalized());
 						}
 					}
 
@@ -674,7 +696,6 @@ SubWindow rayTracingWin()
 				}
 			}
 		};
-
 	
 		if (currentNumSamples < maxNumSamples) {
 			raycaster.checkScene();
@@ -700,10 +721,6 @@ SubWindow rayTracingWin()
 			}
 			case Mode::DEPTH: {
 				img = currentSamplesAverage.normalized<uchar>(0, 255, hitMask, 255);
-				break;
-			}
-			case Mode::DIRECT_LIGHT: {
-				img = currentSamplesAverage.convert<uchar>(255, 0, hitMask, 50);
 				break;
 			}
 			default:
@@ -750,6 +767,7 @@ const std::string voxelgrid_frag_str = R"(
 		uniform vec3 bmin;
 		uniform vec3 bmax;
 		uniform ivec3 gridSize;
+		uniform mat4 mvp;
 
 		vec4 sampleTex(ivec3 cell) {
 			return texture(tex, (vec3(cell) + 0.5)/vec3(gridSize));
@@ -798,7 +816,6 @@ const std::string voxelgrid_frag_str = R"(
 
 		void main(){
 	
-			outColor = vec4(0,0,0,1);
 			vec3 dir = normalize(world_position - eye_pos);
 
 			//setup start
@@ -809,7 +826,7 @@ const std::string voxelgrid_frag_str = R"(
 				if(distToBox >= 0){
 					start = eye_pos + distToBox*dir;
 				} else {
-					return;
+					discard;
 				}
 			} 
 
@@ -832,54 +849,35 @@ const std::string voxelgrid_frag_str = R"(
 
 			float transmittance = 1.0;
 			vec3 base_color = vec3(1,1,0);
-			vec3 color = vec3(0);
+			vec4 color = vec4(0);
 			
+			float t = 0, alpha = 0;
+
 			vec3 prevPos = start, nextPos;
 			int c = 0;
 			do {
-				//if(!checkCell(currentCell)){
-				//	if(any(lessThan(currentCell, ivec3(0)))){
-				//		outColor = vec4(1,1,0,1);
-				//	} else if(any(lessThan(gridSize - 1, currentCell))){
-				//		outColor = vec4(0,1,1,1);
-				//	}	
-				//	return;
-				//}
-				
 				c = getMinIndex(ts);
 				currentCell[c] += steps[c];
+
+				float delta_t = ts[c] - t;
+				t = ts[c];
+
 				ts[c] += deltas[c];
-							
-				nextPos = start + ts[c] * dir;
-				float density = sampleTex(0.5*(prevPos + nextPos)).x; //sampleTex(currentCell).x;
-				float deltaT = exp(-3.0*density);
-				transmittance *= deltaT;
-				color += (1.0-deltaT) * transmittance* base_color;
-				prevPos = nextPos;
+				
+				alpha += delta_t * sampleTex(currentCell).x;
 
-			} while (all(notEqual(currentCell, finalCell))); //all(notEqual(currentCell, finalCell))   //currentCell[c] != finalCell[c]
+			} while (all(notEqual(currentCell, finalCell)));
 			
-			outColor.xyz = color;
-
-			//alpha /= float(2*gridSize[0]);
-			//alpha = clamp(alpha, 0, 1);
-
-			//outColor.xyz = vec3(alpha);
-			//	mix(vec3(1,0,0), vec3(0,0,1), alpha);
-			//  mix(vec3(0,1,0), vec3(1,0,1), alpha);
-			//  mix(vec3(0,0,0), vec3(1,1,1), alpha);
-			//  mix(vec3(0.1,0.2,0.3), vec3(0.9,0.8,0.7), alpha);
-			//  vec3(alpha,1.0-alpha, 0.5*alpha);
-			//  vec3(alpha); 
-			
+			outColor = vec4(mix(vec3(1,1,0),vec3(1), 3*alpha),  min(5*alpha, 1.0));
 		}
 	)";
 
 SubWindow raymarching_win()
 {
-	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube());
-
 	SubWindow win = SubWindow("raymarching", v2i(400, 400));
+
+	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube().setScaling(0.2f));
+	tb.setFar(200);
 
 	win.setUpdateFunction([&](const Input& i) {
 		tb.update(i);
@@ -888,10 +886,9 @@ SubWindow raymarching_win()
 	static ShaderCollection shaders;
 	static ShaderProgram shader;
 	static Uniform<v3f> eye_pos = { "eye_pos" }, bmax = { "bmax", 0.5*v3f(1,1,1) }, bmin = { "bmin", 0.5*v3f(-1,-1,-1) };
-	static Uniform<v3i> gridSize = { "gridSize", v3i(20,20,20) };
+	static Uniform<v3i> gridSize = { "gridSize", 256*v3i(1,1,1) };
 	shader.init(voxelgrid_vert_str, voxelgrid_frag_str);
 	shader.addUniforms(shaders.mvp, eye_pos, bmin, bmax, gridSize);
-
 
 	const int a = 50;
 	const int w = a, h = a, d = a;
@@ -905,7 +902,7 @@ SubWindow raymarching_win()
 			for (int k = 0; k < w; ++k) {
 				float x = 1.0f + 0.2f*(randomVec<float, 1>().x());
 				float di = (float)(i - d / 2), dj = (float)(j - h / 2), dk = (float)(k - w / 2);
-				float diff = exp(-(di * di + dj * dj + dk * dk)/(a));
+				float diff = exp(-(di * di + dj * dj + dk * dk)/(2*a));
 				voxelData[k + w * (j + h * i)] = saturate_cast<uchar>(255.0f * diff * x);
 			}
 		}
@@ -913,25 +910,29 @@ SubWindow raymarching_win()
 	density.updloadToGPU3D(0, 0, 0, 0, w, h, d, voxelData.data());
 
 	win.setGuiFunction([&] {
-		if (ImGui::SliderInt("grid size", &gridSize.get()[0], 1, 256)) {
+		if (ImGui::SliderInt("grid size", &gridSize.get()[0], 1, 512)) {
 			gridSize = gridSize.get()[0] * v3i(1, 1, 1);
 		}
 	});
 
 	win.setRenderingFunction([&](Framebuffer& dst) {
+		const RaycastingCameraf eye = RaycastingCameraf(tb.getCamera(), v2i(dst.w(), dst.h()));
+		eye_pos = eye.position(); 
+		
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendEquation(GL_FUNC_ADD);
+
+		dst.clear();
 		dst.bindDraw();
 
-		const RaycastingCameraf eye = RaycastingCameraf(tb.getCamera(), v2i(dst.w(), dst.h()));
-		eye_pos = eye.position();
+		shaders.renderCubemap(eye, { 0,0,0 }, 100, skyCube);
+
 		shaders.mvp = eye.viewProj();
 		density.bindSlot(GL_TEXTURE0);
 		shader.use();
-		eye.getQuad(0.9f*eye.zFar()).draw();
+		eye.getQuad(2.5f*eye.zNear()).draw();
 
-
-		MeshGL axis = MeshGL::getAxis().setTranslation(v3f(-1, -1, -1));
-		axis.mode = GL_LINE;
-		shaders.renderColoredMesh(eye, axis);
 	});
 
 	return win;
@@ -939,13 +940,12 @@ SubWindow raymarching_win()
 
 int main(int argc, char** argv)
 {
-
 	auto win_checkers = checker_subwin();
 	auto win_mesh_modes = mesh_modes_subwin();
 	auto win_raytracing = rayTracingWin();
 	auto win_raymarch = raymarching_win();
 
-	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::DEBUG,
+	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::FLOATING,
 		[&](const Window& win) {
 		ImGui::Checkbox("texture viewer", &win_checkers.active());
 		ImGui::SameLine();

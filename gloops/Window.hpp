@@ -42,7 +42,7 @@ namespace gloops {
 	{
 
 	public:
-		enum class Type { RENDERING, GUI, DEBUG };
+		enum class Type { RENDERING, GUI, DEBUG, FLOATING = DEBUG };
 
 		using Func = std::function<void(const Window&)>;
 

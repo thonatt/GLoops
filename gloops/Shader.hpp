@@ -139,6 +139,10 @@ namespace gloops {
 		void attachTo(GLptr program);
 		void detach();
 
+		const std::string& getStr() const {
+			return str;
+		}
+
 	protected:
 		std::string str;
 		GLptr id, program;
@@ -155,6 +159,9 @@ namespace gloops {
 		void addUniforms(Uniform<T> & unif, Uniform<Ts> & ...unifs) {
 			if (unif.setupLocation(id)) {
 				uniforms.push_back(unif.getUniformData());
+			} else {
+				std::cout << vertex.getStr() << std::endl;
+				std::cout << fragment.getStr() << std::endl;
 			}
 			addUniforms(unifs...);
 		}
@@ -176,7 +183,7 @@ namespace gloops {
 	public:
 
 		enum class Name {
-			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH, NORMALS
+			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH, NORMALS, CUBEMAP
 		};
 
 		ShaderCollection();
@@ -192,14 +199,15 @@ namespace gloops {
 		
 		void renderNormals(const Cameraf& eye, const MeshGL& mesh, float size = 1.0f, const v4f& color = { 1,0,1,1 });
 
+		void renderCubemap(const Cameraf& eye, const v3f& position, float size, const Texture& cubemap);
+
 		//const ShaderProgram& get(Name name);
 
 
 	public:
-		Uniform<m4f> mvp = { "mvp" }, model = { "model" };
-		Uniform<m3f> rotation = { "rotation" };
+		Uniform<m4f> mvp = { "mvp" }, model = { "model" }, vp = { "vp" };
 		Uniform<v4f> color = { "color" };
-		Uniform<v3f> light_pos = { "light_pos" }, cam_pos{ "cam_pos" };
+		Uniform<v3f> light_pos = { "light_pos" }, cam_pos = { "cam_pos" };
 		Uniform<float> alpha = { "alpha" }, size = { "size" }, lod = { "lod" };
 
 	protected:
@@ -210,6 +218,8 @@ namespace gloops {
 		void initColoredMesh();
 		void initTexturedMesh();
 		void initNormals();
+		void initCubemap();
+
 	};
 
 }

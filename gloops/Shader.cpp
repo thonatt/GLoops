@@ -26,7 +26,7 @@ namespace gloops {
 
 	void GLuniformInternalBase::switchShader(GLuint shaderID) const
 	{
-		auto locIt = location_map.find(shaderID);
+		const auto locIt = location_map.find(shaderID);
 		if (locIt != location_map.end()) { 
 			location = locIt->second;
 		} else {
@@ -162,6 +162,7 @@ namespace gloops {
 		initColoredMesh();
 		initTexturedMesh();
 		initNormals();
+		initCubemap();
 	}
 
 	void ShaderCollection::renderBasicMesh(const Cameraf& eye, const MeshGL& mesh, const v4f& _color)
@@ -176,7 +177,6 @@ namespace gloops {
 	{
 		mvp = eye.viewProj() * mesh.model();
 		model = mesh.model();
-		rotation = mesh.transform().rotation();
 		cam_pos = eye.position();
 		light_pos = light_position;
 		shader_map.at(Name::PHONG).use();
@@ -224,6 +224,20 @@ namespace gloops {
 		mesh.draw();
 	}
 
+	void ShaderCollection::renderCubemap(const Cameraf& eye, const v3f& position, float size, const Texture& cubemap)
+	{
+		glDisable(GL_DEPTH_TEST);
+		glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+
+		MeshGL cube = Mesh::getCube().setTranslation(position).setScaling(size).invertFaces();
+		vp = eye.viewProj();
+		model = cube.model();
+		cubemap.bindSlot(GL_TEXTURE0);
+		shader_map.at(Name::CUBEMAP).use();
+		cube.draw();
+		glEnable(GL_DEPTH_TEST);
+	}
+
 	void ShaderCollection::initBasic()
 	{
 		ShaderProgram shader;
@@ -264,11 +278,10 @@ namespace gloops {
 				out vec3 out_normal;
 
 				uniform mat4 mvp, model;
-				uniform mat3 rotation;
 	
 				void main(){
 					out_pos = (model*vec4(position,1.0)).xyz;
-					out_normal = rotation*normal;
+					out_normal = transpose(inverse(mat3(model)))*normal;
 					gl_Position = mvp*vec4(position,1.0);
 				}
 			)",
@@ -301,7 +314,7 @@ namespace gloops {
 			)"
 		);
 		//shader.initFromPaths(shader_folder + "phong.vert", shader_folder + "phong.frag");
-		shader.addUniforms(mvp, model, rotation, light_pos, cam_pos);
+		shader.addUniforms(mvp, model, light_pos, cam_pos);
 		shader_map[Name::PHONG] = shader;
 	}
 
@@ -427,6 +440,34 @@ namespace gloops {
 
 		shader.addUniforms(mvp, color, size);
 		shader_map[Name::NORMALS] = shader;
+	}
+
+	void ShaderCollection::initCubemap()
+	{
+		ShaderProgram shader;
+		shader.init(
+			R"(
+				#version 420
+				layout(location = 0) in vec3 position;
+				uniform mat4 vp, model;
+				out vec4 pos;
+				void main() {
+					pos = model * vec4(position, 1.0);
+					gl_Position = vp * pos;
+				}
+			)",
+			R"(
+				#version 420
+				layout(location = 0) out vec4 outColor;
+				layout(binding = 0) uniform samplerCube cubeMap;
+				in vec4 pos;
+				void main(){
+					outColor = texture(cubeMap, pos.xyz);
+				}
+			)"
+		);
+		shader.addUniforms(vp, model);
+		shader_map[Name::CUBEMAP] = shader;
 	}
 
 }

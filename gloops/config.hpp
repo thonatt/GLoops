@@ -261,14 +261,14 @@ namespace gloops {
 	auto smoothstep3(const T& a1, const T& a2, U x)
 	{
 		const U u = x * x * (T(3) - T(2) * x);
-		return a1 * (T(1) - u) + a2 * u;
+		return lerp(a1, a2, u);
 	}
 
 	template<typename T, typename U>
 	auto smoothstep5(const T& a1, const T& a2, U x)
 	{
 		const U u = x* x* x* (x * (x * U(6) - U(15)) + U(10));
-		return a1 * (T(1) - u) + a2 * u;
+		return lerp(a1, a2, u);
 	}
 	
 	template<typename U = float>
