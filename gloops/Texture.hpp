@@ -30,7 +30,7 @@ namespace gloops {
 			return !(*this == other);
 		}
 
-		static const TexParamsFormat RGB, BGR, RGBA, RGBA32F;
+		static const TexParamsFormat RED, RGB, BGR, RGBA, RGBA32F;
 
 	public:
 		GLenum target = GL_TEXTURE_2D, type = GL_UNSIGNED_BYTE, internal_format = GL_RGB8, format = GL_RGB;
@@ -311,9 +311,9 @@ namespace gloops {
 
 		void bind(GLenum target = GL_FRAMEBUFFER) const;
 		void bindDraw() const;
-		void bindDraw(const Viewportd& vp) const;
+		void bindDraw(const Viewporti& vp) const;
 		void bindDraw(GLenum attachment) const;
-		void bindDraw(GLenum attachment, const Viewportd& vp) const;
+		void bindDraw(GLenum attachment, const Viewporti& vp) const;
 
 		void bindRead(GLenum attachment) const;
 
@@ -352,6 +352,8 @@ namespace gloops {
 	protected:
 		void createBuffer();
 		void createDepth(int w, int h);
+
+		Viewporti viewport() const;
 
 		std::map<GLenum, Texture> attachments;
 		GLptr id, depth_id;

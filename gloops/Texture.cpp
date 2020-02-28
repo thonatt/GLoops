@@ -7,6 +7,7 @@
 
 namespace gloops {
 
+	const TexParamsFormat TexParamsFormat::RED = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_R8, GL_RED);
 	const TexParamsFormat TexParamsFormat::RGB = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_RGB);
 	const TexParamsFormat TexParamsFormat::BGR = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_BGR);
 	const TexParamsFormat TexParamsFormat::RGBA = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGBA8, GL_RGBA);
@@ -258,6 +259,13 @@ namespace gloops {
 		createBuffer();
 		createDepth(_w, _h);
 
+		GLint maxAttachments = 0;
+		glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAttachments);
+		if (numAttachments > maxAttachments) {
+			std::cout << "trying to setup " << numAttachments << " color attachments, " << maxAttachments << " used instead" << std::endl;
+			numAttachments = maxAttachments;
+		}
+
 		for (int i = 0; i < numAttachments; ++i) {
 			Texture tex = Texture(w(), h(), numChannels, params);
 			setAttachment(tex, GL_COLOR_ATTACHMENT0 + i, 0);
@@ -308,30 +316,35 @@ namespace gloops {
 
 	void Framebuffer::bindDraw() const
 	{
-		bind();
-		for (const auto& attachment : attachments) {
-			glDrawBuffers(1, &attachment.first);
-		}
-		glViewport(0, 0, w(), h());
+		bindDraw(viewport());
 	}
 
-	void Framebuffer::bindDraw(const Viewportd& vp) const
+	void Framebuffer::bindDraw(const Viewporti& vp) const
 	{
+		GLint maxDrawBuffers = 0;
+		glGetIntegerv(GL_MAX_DRAW_BUFFERS, &maxDrawBuffers);
+		if (attachments.size() > maxDrawBuffers) {
+			std::cout << "trying to draw to " << attachments.size() << " buffers, maximum available is " << maxDrawBuffers << std::endl;
+		}
+
 		bind();
+		int count = 0;
 		for (const auto& attachment : attachments) {
+			if (count == maxDrawBuffers) {
+				break;
+			}
 			glDrawBuffers(1, &attachment.first);
+			++count;		
 		}
 		vp.gl();
 	}
 
 	void Framebuffer::bindDraw(GLenum attachment) const
 	{
-		bind();
-		glDrawBuffers(1, &attachment);
-		glViewport(0, 0, w(), h());
+		bindDraw(attachment, viewport());
 	}
 
-	void Framebuffer::bindDraw(GLenum attachment, const Viewportd& vp) const
+	void Framebuffer::bindDraw(GLenum attachment, const Viewporti& vp) const
 	{
 		bind();
 		glDrawBuffers(1, &attachment);
@@ -418,6 +431,11 @@ namespace gloops {
 
 		bind();
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_id);
+	}
+
+	Viewporti Framebuffer::viewport() const
+	{
+		return Viewporti(v2i(0, 0), v2i(w(), h()));
 	}
 
 	LoaderManager LoaderManager::mainLoader = {};
