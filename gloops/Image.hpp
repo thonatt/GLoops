@@ -129,9 +129,8 @@ namespace gloops {
 		}
 
 		Image subImage(int offsetX, int offsetY, int width, int height) {
-			Image out(width, height);
-
 			constexpr size_t SizeOfPixel = sizeof(Pixel);
+			Image out(width, height);		
 			for (size_t row = 0; row < (size_t)height; ++row) {
 				std::memcpy(
 					out.data() + SizeOfPixel * width * row,
@@ -139,7 +138,6 @@ namespace gloops {
 					SizeOfPixel * width
 				);
 			}
-
 			return out;
 		}
 
@@ -211,7 +209,6 @@ namespace gloops {
 			}
 			return out;
 		}
-
 
 		template<typename U = T, int M = N>
 		Image<U, M> convert(

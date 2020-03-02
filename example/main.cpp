@@ -102,7 +102,7 @@ SubWindow texture_subwin()
 			static v3f colA = { 0,0,0 }, colB = { 1,1,1 };
 			static bool colChanged = true;
 			static Image1f perlin;
-			
+
 			ImGui::Separator();
 			if (ImGui::Button("Shuffle") || colChanged) {
 				perlin = 0.5 * perlinNoise(80, 80, 5) + 0.5;
@@ -113,7 +113,7 @@ SubWindow texture_subwin()
 			colChanged |= colPicker("first", &colA[0]);
 			ImGui::SameLine();
 			colChanged |= colPicker("second", &colB[0]);
-			if (colChanged) {	
+			if (colChanged) {
 				Image3b img = (perlin * colA + (1 - perlin) * colB).convert<uchar>(255);
 				currentTex().update2D(img, texParams);
 				colChanged = false;
@@ -164,19 +164,21 @@ SubWindow texture_subwin()
 		}
 
 		static std::array<GLint, 4> mask;
+		static bool channels_changed = true; 
 		mask = texParams.getSwizzleMask();
-		ImGui::Text("Channel swizzling");
-		ImGui::SameLine();
-		ImGui::ItemWithSize(210, [&] {
-			if (ImGui::SliderInt3("##swizzling", mask.data(), GL_RED, GL_BLUE)) {
+
+		ImGui::Text("Channel swizzling : ");
+		ImGui::ItemWithSize(100, [&] {
+			for (int i = 0; i < 3; ++i) {
+				const std::string nm = "##swizzling" + std::to_string(i);
+				ImGui::SameLine();
+				channels_changed |= ImGui::SliderInt(nm.c_str(), &mask[i], GL_RED, GL_BLUE, channels.at(mask[i]).c_str());
+			}
+			if (channels_changed) {
 				texParams.setSwizzleMask(mask);
+				channels_changed = false;
 			}
 		});
-		for (int c = 0; c < 3; ++c) {
-			ImGui::SameLine();
-			ImGui::Text(channels.at(mask[c]));
-		}
-		
 	},
 		[&](const Input& i)
 	{
@@ -768,6 +770,7 @@ const std::string voxelgrid_frag_str = R"(
 		uniform vec3 bmax;
 		uniform ivec3 gridSize;
 		uniform mat4 mvp;
+		uniform float intensity;
 
 		vec4 sampleTex(ivec3 cell) {
 			return texture(tex, (vec3(cell) + 0.5)/vec3(gridSize));
@@ -860,7 +863,7 @@ const std::string voxelgrid_frag_str = R"(
 
 			} while (all(notEqual(currentCell, finalCell)));
 			
-			outColor = vec4(mix(vec3(1,1,0),vec3(1), 3*alpha),  min(5*alpha, 1.0));
+			outColor = vec4(mix(vec3(1,1,0),vec3(1), intensity*alpha),  min(5*alpha, 1.0));
 		}
 	)";
 
@@ -879,8 +882,9 @@ SubWindow raymarching_win()
 	static ShaderProgram shader;
 	static Uniform<v3f> eye_pos = { "eye_pos" }, bmax = { "bmax", 0.5*v3f(1,1,1) }, bmin = { "bmin", 0.5*v3f(-1,-1,-1) };
 	static Uniform<v3i> gridSize = { "gridSize", 256*v3i(1,1,1) };
+	static Uniform<float> intensity = { "intensity" , 3.0f };
 	shader.init(voxelgrid_vert_str, voxelgrid_frag_str);
-	shader.addUniforms(shaders.mvp, eye_pos, bmin, bmax, gridSize);
+	shader.addUniforms(shaders.mvp, eye_pos, bmin, bmax, gridSize, intensity);
 
 	const int a = 50;
 	const int w = a, h = a, d = a;
@@ -905,6 +909,7 @@ SubWindow raymarching_win()
 		if (ImGui::SliderInt("grid size", &gridSize.get()[0], 1, 512)) {
 			gridSize = gridSize.get()[0] * v3i(1, 1, 1);
 		}
+		ImGui::SliderFloat("intensity", &intensity.get(), 2, 4);
 	});
 
 	win.setRenderingFunction([&](Framebuffer& dst) {

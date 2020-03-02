@@ -388,7 +388,7 @@ namespace gloops {
 		MeshGL getQuad(T dist) const
 		{
 			Mesh::Vertices vertices(3);
-			auto corners_rays = getCornersRays();
+			const auto corners_rays = getCornersRays();
 			for (int c = 0; c < 3; ++c) {
 				vertices[c] = corners_rays[c].pointAt(dist). template cast<float>();
 			}
