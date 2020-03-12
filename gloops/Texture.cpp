@@ -11,6 +11,7 @@ namespace gloops {
 	const TexParamsFormat TexParamsFormat::RGB = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_RGB);
 	const TexParamsFormat TexParamsFormat::BGR = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB8, GL_BGR);
 	const TexParamsFormat TexParamsFormat::RGBA = TexParamsFormat(GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGBA8, GL_RGBA);
+	const TexParamsFormat TexParamsFormat::RED32F = TexParamsFormat(GL_TEXTURE_2D, GL_FLOAT, GL_R32F, GL_RED);
 	const TexParamsFormat TexParamsFormat::RGBA32F = TexParamsFormat(GL_TEXTURE_2D, GL_FLOAT, GL_RGBA32F, GL_RGBA);
 
 	Texture::Texture(const TexParams& params)

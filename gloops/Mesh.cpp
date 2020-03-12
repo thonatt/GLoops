@@ -284,16 +284,21 @@ namespace gloops {
 			glEnable(GL_DEPTH_TEST);
 		}
 	
-		if (mode == GL_POINT) {
-			primitive = GL_POINTS;
-		} else {
-			primitive = GL_TRIANGLES;
-		}
+		//if (mode == GL_POINT) {
+		//	primitive = GL_POINTS;
+		//} else {
+		//	primitive = GL_TRIANGLES;
+		//}
 
 		glBindVertexArray(vao);
 
 		switch (primitive)
 		{
+		case GL_PATCHES: {
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, triangleBuffer);
+			glDrawElements(GL_PATCHES, static_cast<GLsizei>(3 * getTriangles().size()), GL_UNSIGNED_INT, 0);
+			break;
+		}
 		case GL_TRIANGLES: {
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, triangleBuffer);
 			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(3 * getTriangles().size()), GL_UNSIGNED_INT, 0);

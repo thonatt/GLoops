@@ -10,12 +10,6 @@
 //dont try this at home
 using namespace gloops;
 
-bool colPicker(const std::string& s, float* ptr, uint flag = 0) {
-	ImGui::Text(s);
-	ImGui::SameLine();
-	return ImGui::ColorEdit4(s.c_str(), ptr, flag | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
-};
-
 static Window mainWin = Window("GLoops demos");
 
 static TexParams texParams = TexParams().enableMipmap().setMagFilter(GL_NEAREST);
@@ -24,6 +18,8 @@ static TexParams cubeParams = TexParams().disableMipmap().setTarget(GL_TEXTURE_C
 Texture checkers_tex = Texture(checkersTexture(80, 80, 10), texParams), perlinTex, 
 	kittenTex = Texture::fromPath2D("../../kitten.png", texParams),
 	skyCube = Texture::fromPathCube("../../sky.png", cubeParams);
+
+static Texture displacement_tex = Texture(0.2f * perlinNoise(512, 512, 48), TexParams::RED32F);
 
 enum class TexMode { CHECKERS, PERLIN, KITTEN };
 struct ModeData {
@@ -110,9 +106,9 @@ SubWindow texture_subwin()
 			}
 
 			ImGui::SameLine();
-			colChanged |= colPicker("first", &colA[0]);
+			colChanged |= ImGui::colPicker("first", colA);
 			ImGui::SameLine();
-			colChanged |= colPicker("second", &colB[0]);
+			colChanged |= ImGui::colPicker("second", colB);
 			if (colChanged) {
 				Image3b img = (perlin * colA + (1 - perlin) * colB).convert<uchar>(255);
 				currentTex().update2D(img, texParams);
@@ -124,7 +120,7 @@ SubWindow texture_subwin()
 		}
 
 		ImGui::Separator();
-		ImGui::Text("Wrapping : ");
+		ImGui::Text("Wrapping");
 		for (const auto& wrap : wraps) {
 			ImGui::SameLine();
 			if (ImGui::RadioButton(wrap.second.c_str(), texParams.getWrapS() == wrap.first)) {
@@ -143,11 +139,11 @@ SubWindow texture_subwin()
 			ImGui::ItemWithSize(150, [&] { ImGui::SliderFloat("##lod", &lod, 0, float(currentTex().nLods() - 1)); });
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("recenter")) {
+		if (ImGui::Button("Recenter")) {
 			texCenter = v2f(0, 0);
 		}
 
-		ImGui::Text("Mag filtering : ");
+		ImGui::Text("Mag filtering");
 		for (const auto& filter : mag_filters) {
 			ImGui::SameLine();
 			if (ImGui::RadioButton((filter.second + "##mag").c_str(), texParams.getMagFilter() == filter.first)) {
@@ -155,7 +151,7 @@ SubWindow texture_subwin()
 			}
 		}
 
-		ImGui::Text("Min filtering : ");
+		ImGui::Text("Min filtering");
 		for (const auto& filter : min_filters) {
 			ImGui::SameLine();
 			if (ImGui::RadioButton((filter.second + "##min").c_str(), texParams.getMinFilter() == filter.first)) {
@@ -167,7 +163,7 @@ SubWindow texture_subwin()
 		static bool channels_changed = true; 
 		mask = texParams.getSwizzleMask();
 
-		ImGui::Text("Channel swizzling : ");
+		ImGui::Text("Channel swizzling");
 		ImGui::ItemWithSize(100, [&] {
 			for (int i = 0; i < 3; ++i) {
 				const std::string nm = "##swizzling" + std::to_string(i);
@@ -236,46 +232,30 @@ SubWindow texture_subwin()
 
 SubWindow mesh_modes_subwin()
 {
-	static MeshGL meshA = Mesh::getTorus(3, 1),
-		meshB = Mesh::getTorus(3, 1).setTranslation(3 * v3f::UnitY()).setRotation(v3f(0, pi<float>() / 2, 0)),
-		meshC = Mesh::getSphere().setScaling(3).setTranslation(-8 * v3f(0, 1, 0)),
+	static int precision = 25;
+
+	static MeshGL meshA = Mesh::getTorus(3, 1, precision),
+		meshB = Mesh::getTorus(3, 1, precision).setTranslation(3 * v3f::UnitY()).setRotation(v3f(0, pi<float>() / 2, 0)),
+		meshC = Mesh::getSphere(precision).setScaling(3).setTranslation(-8 * v3f(0, 1, 0)),
 		meshD = Mesh::getCube().setScaling(2).setTranslation(v3f(-5, -5, 5)).setRotation(v3f(1, 1, 1));
 
 	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC, meshD);
+	tb.setRadius(15);
 
 	static ShaderCollection shaders;
 
-	static ShaderProgram uv_shader;
-	uv_shader.init(R"(
-				#version 420
-				layout(location = 0) in vec3 position;
-				layout(location = 1) in vec2 uv;
-				uniform mat4 mvp;
-				out vec2 in_uv; 
-				void main() {
-					in_uv = uv;
-					gl_Position = mvp * vec4(position, 1.0);
-				}
-			)",
-		R"(
-				#version 420
-				layout(location = 0) out vec4 outColor;
-				in vec2 in_uv; 
-				void main(){
-					outColor = vec4(in_uv,0,1);
-				}
-			)"
-	);
-	uv_shader.addUniforms(shaders.mvp);
+	static Shader tcs_displacement = Shader(GL_TESS_CONTROL_SHADER, ShaderCollection::tcsTriInTerface()),
+		tev_displacement = Shader(GL_TESS_EVALUATION_SHADER, ShaderCollection::tevTriDisplacement());
 
 	enum class Mode { POINT, LINE, PHONG, UVS, COLORED, TEXTURED };
 	struct ModeMesh {
 		Mode mode;
 		MeshGL mesh;
-		v4f color = v4f(1, 0, 0, 1.0f);
-		bool showNormals = false;
+		v4f color = v4f(1, 0, 0, 1);
+		float tesselationLevel = 2.0f;
+		bool showNormals = false, displacement = false;
 	};
-	static bool showAllBB = true;
+	static bool showAllBB = false;
 
 	static std::map<int, ModeMesh> meshes =
 	{
@@ -284,9 +264,7 @@ SubWindow mesh_modes_subwin()
 		{ 2, { Mode::UVS, meshC } },
 		{ 3, { Mode::PHONG, meshD } }
 	};
-
 	static int selectedMesh = -1;
-
 	for (auto& m : meshes) {
 		m.second.mesh.setCPUattribute("id", std::vector<int>(m.second.mesh.getVertices().size(), m.first));
 	}
@@ -302,28 +280,35 @@ SubWindow mesh_modes_subwin()
 
 	static Hit hit;
 
-	auto sub = SubWindow("Render modes", v2i(400, 400),
-		[&]
-	{
+	auto sub = SubWindow("Render modes", v2i(400, 400));
+
+	sub.setGuiFunction([&] {
 		ImGui::Checkbox("Show AABBs", &showAllBB);
+		ImGui::SameLine();
+		ImGui::colPicker("Background color", sub.clearColor);
+
+		ImGui::Separator();
 
 		if (selectedMesh < 0) {
 			ImGui::Text("No mesh selected");
 			return;
 		}
-	
+
 		auto& mesh = meshes.at(selectedMesh);
 		auto& meshGL = mesh.mesh;
 
-		ImGui::SameLine();
 		ImGui::Checkbox("Show normals", &mesh.showNormals);
 
+		ImGui::SameLine();
+		ImGui::Checkbox("Tesselation & displacement", &mesh.displacement);
+		if (mesh.displacement) {
+			ImGui::SameLine();
+			ImGui::ItemWithSize(75, [&] { ImGui::SliderFloat("size", &mesh.tesselationLevel, 1, 10);  });
+		}
 		if (mesh.mode == Mode::COLORED || mesh.mode == Mode::POINT || mesh.mode == Mode::LINE) {
 			ImGui::SameLine();
-			ImGui::ColorEdit4("Selected mesh color", &mesh.color[0], ImGuiColorEditFlags_NoInputs);
+			ImGui::colPicker("Mesh color", mesh.color);
 		}
-
-		ImGui::Separator();
 
 		int mode_id = 0;
 		for (const auto& mode : modes) {
@@ -332,27 +317,26 @@ SubWindow mesh_modes_subwin()
 			}
 			if (mode_id != ((int)modes.size() - 1)) {
 				ImGui::SameLine();
-			}			
+			}
 			++mode_id;
 		}
 
 		static v3f pos, rot;
 		pos = meshGL.transform().translation();
-		if (ImGui::SliderFloat3("Translation", pos.data(), -5, 5)) {
+		if (ImGui::SliderFloat3("Translation", pos.data(), -10, 10)) {
 			meshGL.setTranslation(pos);
 		}
 		rot = meshGL.transform().eulerAngles();
-		if (ImGui::SliderFloat3("Rotation", rot.data(), -2.0f * pi<float>(), 2.0f * pi<float>())) {
+		if (ImGui::SliderFloat3("Rotation", rot.data(), -1.5f * pi<float>(), 1.5f * pi<float>())) {
 			meshGL.setRotation(rot);
 		}
 		static float scale;
 		scale = meshGL.transform().scaling()[0];
 		ImGui::ItemWithSize(175, [&] {
-			if (ImGui::SliderFloat("Scale", &scale, 0, 5)) {
+			if (ImGui::SliderFloat("Scale", &scale, 0.01f, 10)) {
 				meshGL.setScaling(scale);
 			}
 
-			static int precision = 50;
 			if (selectedMesh <= 2) {
 				ImGui::SameLine();
 				if (ImGui::SliderInt("Precision", &precision, 3, 50)) {
@@ -369,7 +353,7 @@ SubWindow mesh_modes_subwin()
 				}
 			}
 		});
-		
+
 		if (ImGui::TreeNode("mesh infos")) {
 			std::stringstream h;
 			h << "num vertices : " << meshGL.getVertices().size() << "\n";
@@ -388,7 +372,7 @@ SubWindow mesh_modes_subwin()
 				s << attribute.second.first << "\n";
 				s << "  location : " << att.index << "\n";
 				s << "  nchannels : " << att.num_channels << "\n";
-				s << "  type : " << att.type << "\n";
+				s << "  sizeof attribute : " << 8 * att.total_num_bytes / meshGL.getVertices().size() << "\n";
 				s << "  stride : " << att.stride << "\n";
 				s << "  normalized : " << std::boolalpha << (bool)att.normalized << "\n";
 				s << "  data ptr : " << att.pointer << "\n";
@@ -396,28 +380,28 @@ SubWindow mesh_modes_subwin()
 			}
 			ImGui::TreePop();
 		}
-	},
-		[&](const Input& i)
-	{
+	});
+	
+	sub.setUpdateFunction([&](const Input& i) {
 		tb.update(i);
 		RaycastingCameraf eye(tb.getCamera(), i.viewport().diagonal().template cast<int>());
 		hit = tb.getRaycaster().intersect(eye.getRay(i.mousePosition<float>()));
 
 		if (hit.successful()) {
 
-			int id = (int)tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id");
+			int id = (int)std::round(tb.getRaycaster().interpolate(hit, &Mesh::getAttribute<int>, "id"));
 
 			ImGui::BeginTooltip();
-			ImGui::Text("Click to " + std::string(id == selectedMesh ? "un" : "") + "select mesh with id : " + std::to_string(hit.instanceId()));
+			ImGui::Text("Left click to " + std::string(id == selectedMesh ? "un" : "") + "select mesh with id : " + std::to_string(hit.instanceId()));
 			ImGui::EndTooltip();
 
 			if (i.buttonClicked(GLFW_MOUSE_BUTTON_LEFT)) {
 				selectedMesh = (selectedMesh == id ? -1 : id);
 			}
 		}
-	},
-		[&](Framebuffer& dst)
-	{
+	});
+
+	sub.setRenderingFunction( [&](Framebuffer& dst){
 		dst.bindDraw();
 
 		Cameraf eye = tb.getCamera();
@@ -428,6 +412,19 @@ SubWindow mesh_modes_subwin()
 		for (auto& m : meshes) {
 
 			MeshGL& mesh = m.second.mesh;
+
+			if (m.second.displacement) {
+				mesh.primitive = GL_PATCHES;
+				displacement_tex.bindSlot(GL_TEXTURE6);
+				shaders.tesselation_size = m.second.tesselationLevel;
+
+				for (auto& program : shaders.shaderPrograms) {
+					program.second.setupShader(tcs_displacement);
+					program.second.setupShader(tev_displacement);
+					program.second.addUniforms(shaders.tesselation_size);
+				}	
+			}
+
 			switch (m.second.mode)
 			{
 			case Mode::PHONG: {
@@ -437,9 +434,7 @@ SubWindow mesh_modes_subwin()
 			}
 			case Mode::UVS: {
 				mesh.mode = GL_FILL;
-				shaders.mvp = tb.getCamera().viewProj() * mesh.model();
-				uv_shader.use();
-				mesh.draw();
+				shaders.renderUVs(eye, mesh);
 				break;
 			}
 			case Mode::TEXTURED: {
@@ -458,7 +453,7 @@ SubWindow mesh_modes_subwin()
 			}
 			case Mode::LINE: {
 				mesh.mode = GL_LINE;
-				shaders.renderBasicMesh(eye, mesh, m.second.color);
+				shaders.renderBasicMesh(eye, mesh, m.second.color);	
 				break;
 			}
 			default: {}
@@ -467,11 +462,24 @@ SubWindow mesh_modes_subwin()
 			if (m.second.showNormals) {
 				shaders.renderNormals(eye, mesh, mesh.getBoundingBox().diagonal().norm() / 25);
 			}
-			if (m.first == selectedMesh) {
-				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v4f(0, 1, 0, 1));
-			} else if (showAllBB) {
-				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v4f(1, 0, 0, 1));
+
+			if (m.second.displacement) {
+				mesh.primitive = GL_TRIANGLES;
+
+				for (auto& program : shaders.shaderPrograms) {
+					program.second.setupShader(ShaderType::TESSELATION_CONTROL, "");
+					program.second.setupShader(ShaderType::TESSELATION_EVALUATION, "");
+					program.second.removeUniforms(shaders.tesselation_size);
+				}
 			}
+			
+			if (m.first == selectedMesh) {
+				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v3f(0, 1, 0));
+			} else if (showAllBB) {
+				shaders.renderBasicMesh(eye, MeshGL::getCubeLines(mesh.getBoundingBox()), v3f(1, 0, 0));
+			}
+
+
 		}
 		glDisable(GL_BLEND);
 	});
@@ -741,7 +749,7 @@ SubWindow rayTracingWin()
 			auto meshPaths = MeshGL::fromEndPoints(paths);
 			meshPaths.setColors(colors);
 			shaders.renderColoredMesh(cam, meshPaths);
-			shaders.renderBasicMesh(cam, MeshGL::fromEndPoints(normals), v4f(0, 1, 0, 1));
+			shaders.renderBasicMesh(cam, MeshGL::fromEndPoints(normals), v3f(0, 1, 0));
 		}
 	});
 
@@ -760,14 +768,12 @@ const std::string voxelgrid_vert_str = R"(
 	)";
 
 const std::string voxelgrid_frag_str = R"(
-		#version 430
+		#version 420
 		layout(location = 0) out vec4 outColor;
 		layout(binding = 0) uniform sampler3D tex; 
 
 		in vec3 world_position;
-		uniform vec3 eye_pos;
-		uniform vec3 bmin;
-		uniform vec3 bmax;
+		uniform vec3 eye_pos, bmin, bmax;
 		uniform ivec3 gridSize;
 		uniform mat4 mvp;
 		uniform float intensity;
@@ -839,19 +845,12 @@ const std::string voxelgrid_frag_str = R"(
 				ts[k] = deltas[k] * (dir[k] >= 0 ? 1.0 - fracs[k] : fracs[k]);
 				finalCell[k] = (dir[k] >= 0 ? gridSize[k] : -1);
 			}
-					
-			//actual raymarching
 
-			float transmittance = 1.0;
-			vec3 base_color = vec3(1,1,0);
-			vec4 color = vec4(0);
-			
 			float t = 0, alpha = 0;
 
-			vec3 prevPos = start, nextPos;
-			int c = 0;
+			//actual raymarching
 			do {
-				c = getMinIndex(ts);
+				int c = getMinIndex(ts);
 				currentCell[c] += steps[c];
 
 				float delta_t = ts[c] - t;
@@ -871,7 +870,7 @@ SubWindow raymarching_win()
 {
 	SubWindow win = SubWindow("raymarching", v2i(400, 400));
 
-	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube().setScaling(0.4f));
+	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube().setScaling(0.3f));
 	tb.setFar(200);
 
 	win.setUpdateFunction([&](const Input& i) {
@@ -896,7 +895,7 @@ SubWindow raymarching_win()
 	for (int i = 0; i < d; ++i) {
 		for (int j = 0; j < h; ++j) {
 			for (int k = 0; k < w; ++k) {
-				float x = 1.0f + 0.2f*(randomVec<float, 1>().x());
+				float x = 1.0f + 1.0f*(randomVec<float, 1>().x());
 				float di = (float)(i - d / 2), dj = (float)(j - h / 2), dk = (float)(k - w / 2);
 				float diff = exp(-(di * di + dj * dj + dk * dk)/(2*a));
 				voxelData[k + w * (j + h * i)] = saturate_cast<uchar>(255.0f * diff * x);
@@ -944,12 +943,12 @@ int main(int argc, char** argv)
 
 	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::FLOATING,
 		[&](const Window& win) {
-		ImGui::Checkbox("texture viewer", &win_textures.active());
+		ImGui::Checkbox("Texture viewer", &win_textures.active());
 		ImGui::SameLine();
-		ImGui::Checkbox("ray marching", &win_raymarch.active());
-		ImGui::Checkbox("mesh modes", &win_mesh_modes.active());
+		ImGui::Checkbox("Ray marching", &win_raymarch.active());
+		ImGui::Checkbox("Mesh modes", &win_mesh_modes.active());
 		ImGui::SameLine();
-		ImGui::Checkbox("ray tracing", &win_raytracing.active());
+		ImGui::Checkbox("Ray tracing", &win_raytracing.active());
 	});
 
 	mainWin.renderingLoop([&]{

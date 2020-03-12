@@ -2,9 +2,9 @@
 
 #include "config.hpp"
 
-#include <vector>
 #include <memory>
 #include <map>
+#include <set>
 
 #include "Camera.hpp"
 
@@ -130,50 +130,71 @@ namespace gloops {
 	};
 
 
-	class ShaderData {
+	enum class ShaderType : GLenum {
+		VERTEX = GL_VERTEX_SHADER,
+		FRAGMENT = GL_FRAGMENT_SHADER,
+		GEOMETRY = GL_GEOMETRY_SHADER,
+		TESSELATION_CONTROL = GL_TESS_CONTROL_SHADER,
+		TESSELATION_EVALUATION = GL_TESS_EVALUATION_SHADER
+	};
+
+	class Shader {
 
 	public:
-		ShaderData() = default;
-		ShaderData(GLuint shader_type, const std::string & shader_str);
+		Shader() = default;
+		Shader(GLuint shader_type, const std::string & shader_str);
 
-		void attachTo(GLptr program);
-		void detach();
+		void attachTo(GLuint program) const;
+		void detachFrom(GLuint program) const;
 
-		const std::string& getStr() const {
-			return str;
-		}
+		const std::string& getStr() const;
+		GLenum getType() const;
+
+		operator bool() const;
 
 	protected:
+		void checkCompilation();
+
 		std::string str;
-		GLptr id, program;
-		GLuint type = GL_VERTEX_SHADER;
+		GLptr id;
+		GLint compileStatus = GL_FALSE;
+		GLenum type = GL_FRAGMENT_SHADER;
 	};
 
 	class ShaderProgram {
 
 	public:
-		void init(const std::string & vertex, const std::string & frag, const std::string & geom = "");
-		void initFromPaths(const std::string& vertex, const std::string& frag, const std::string& geom = "");
+		ShaderProgram();
+
+		void init(const std::string& vertex, const std::string& frag);
+		void init(const std::string& vertex, const std::string& geom, const std::string& frag);
+
+		void initFromPaths(const std::string& vertex, const std::string& frag);
+		void initFromPaths(const std::string& vertex, const std::string& geom, const std::string& frag);
+
+		void setupShader(ShaderType type, const std::string& str);
+		void setupShader(const Shader& shader);
 
 		template<typename T, typename ...Ts>
-		void addUniforms(Uniform<T> & unif, Uniform<Ts> & ...unifs) {
-			if (unif.setupLocation(id)) {
-				uniforms.push_back(unif.getUniformData());
-			} else {
-				std::cout << vertex.getStr() << std::endl;
-				std::cout << fragment.getStr() << std::endl;
-			}
-			addUniforms(unifs...);
-		}
-		
+		void addUniforms(Uniform<T>& uniform, Uniform<Ts>& ...unifs);
+
+		template<typename T, typename ...Ts>
+		void removeUniforms(Uniform<T>& uniform, Uniform<Ts>& ...unifs);
+
 		void use() const;
 
 	private:
-		void addUniforms() {}
+		void addUniforms();
+		void removeUniforms();
 
-		std::vector<std::shared_ptr<GLuniformInternalBase>> uniforms;
-		ShaderData vertex, fragment, geometry;
+		void linkProgram() const;
+		void checkLink() const;
+		void locateUniforms() const;
+
+		std::set<std::shared_ptr<GLuniformInternalBase>> uniforms;
+		std::map<ShaderType, Shader> shaders;
 		GLptr id;
+		mutable GLint linkStatus = GL_FALSE, uniformsStatus = GL_FALSE;
 	};
 
 	class MeshGL;
@@ -183,12 +204,12 @@ namespace gloops {
 	public:
 
 		enum class Name {
-			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH, NORMALS, CUBEMAP
+			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH, NORMALS, CUBEMAP, UVS
 		};
 
 		ShaderCollection();
 		
-
+		void renderBasicMesh(const Cameraf& eye, const MeshGL& mesh, const v3f& color);
 		void renderBasicMesh(const Cameraf& eye, const MeshGL& mesh, const v4f& color);
 		void renderPhongMesh(const Cameraf& eye, const v3f& light_position, const MeshGL& mesh);
 		void renderPhongMesh(const Cameraf& eye, const MeshGL& mesh);
@@ -197,21 +218,29 @@ namespace gloops {
 		void renderTexturedMesh(const Cameraf& eye, const MeshGL& mesh, const Texture& tex, float alpha = 1.0f, float lod = - 1);
 		void renderTexturedMesh(const MeshGL& mesh, const Texture& tex, float alpha = 1.0f, float lod = -1); 
 		
+		void renderUVs(const Cameraf& eye, const MeshGL& mesh);
+
 		void renderNormals(const Cameraf& eye, const MeshGL& mesh, float size = 1.0f, const v4f& color = { 1,0,1,1 });
 
 		void renderCubemap(const Cameraf& eye, const v3f& position, float size, const Texture& cubemap);
-
-		//const ShaderProgram& get(Name name);
-
-
 	public:
 		Uniform<m4f> mvp = { "mvp" }, model = { "model" }, vp = { "vp" };
 		Uniform<v4f> color = { "color" };
 		Uniform<v3f> light_pos = { "light_pos" }, cam_pos = { "cam_pos" };
-		Uniform<float> alpha = { "alpha" }, size = { "size" }, lod = { "lod" };
+		Uniform<v2f> viewport_diagonal = { "viewport_diagonal" };
+		Uniform<float> alpha = { "alpha" }, size = { "size" }, lod = { "lod" }, tesselation_size = { "tesselation_size", 1 };
 
-	protected:
-		std::map<Name, ShaderProgram> shader_map;
+		std::map<Name, ShaderProgram> shaderPrograms;
+
+	public:
+		static const std::string
+			//& vertexPosition(), & vertexPositionNormalUV(), & vertexMVP(), & vertexMVPPosition(), & vertexMVPColor(), & vertexMVPUV(), & vertexMVPPositionNormal(),			
+			& vertexMeshInterface(), & geomNormalTriangle(), 
+			& fragUniformColor(), & fragColor(), & fragPhong(), & fragLodTexUValpha(), & fragCubemap(), &fragUVs(),
+			& tcsTriInTerface(), &tevTriDisplacement();
+
+	private:
+		void setMVP(const Cameraf& eye, const MeshGL& mesh);
 
 		void initBasic();
 		void initPhong();
@@ -219,7 +248,21 @@ namespace gloops {
 		void initTexturedMesh();
 		void initNormals();
 		void initCubemap();
-
+		void initUVs();
 	};
+
+	template<typename T, typename ...Ts>
+	inline void ShaderProgram::addUniforms(Uniform<T>& uniform, Uniform<Ts>& ...unifs)
+	{
+		uniforms.insert(uniform.getUniformData());
+		addUniforms(unifs...);
+	}
+
+	template<typename T, typename ...Ts>
+	inline void ShaderProgram::removeUniforms(Uniform<T>& uniform, Uniform<Ts>& ...unifs)
+	{
+		uniforms.erase(uniform.getUniformData());
+		removeUniforms(unifs...);
+	}
 
 }

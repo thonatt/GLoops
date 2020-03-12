@@ -106,6 +106,18 @@ namespace ImGui {
 		f();
 		ImGui::PopItemWidth();
 	}
+	
+	inline bool colPicker(const std::string& s, gloops::v3f& color, unsigned int flag = 0) {
+		ImGui::Text(s);
+		ImGui::SameLine();
+		return ImGui::ColorEdit3(s.c_str(), &color[0], flag | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+	};
+
+	inline bool colPicker(const std::string& s, gloops::v4f& color, unsigned int flag = 0) {
+		ImGui::Text(s);
+		ImGui::SameLine();
+		return ImGui::ColorEdit4(s.c_str(), &color[0], flag | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+	};
 
 }
 

@@ -30,7 +30,7 @@ namespace gloops {
 			return !(*this == other);
 		}
 
-		static const TexParamsFormat RED, RGB, BGR, RGBA, RGBA32F;
+		static const TexParamsFormat RED, RGB, BGR, RGBA, RED32F, RGBA32F;
 
 	public:
 		GLenum target = GL_TEXTURE_2D, type = GL_UNSIGNED_BYTE, internal_format = GL_RGB8, format = GL_RGB;
