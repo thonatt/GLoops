@@ -1,7 +1,7 @@
 #include "Image.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "../extlibs/stb_image/stb_image.h"
+#include <stb_image.h>
 
 namespace gloops {
 

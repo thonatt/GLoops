@@ -1,0 +1,15 @@
+[submodule "extlibs/embree"]
+	path = extlibs/embree
+	url = https://github.com/embree/embree.git
+[submodule "extlibs/assimp"]
+	path = extlibs/assimp
+	url = https://github.com/assimp/assimp.git
+[submodule "extlibs/eigen"]
+	path = extlibs/eigen
+	url = https://gitlab.com/libeigen/eigen.git
+[submodule "extlibs/glfw"]
+	path = extlibs/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "extlibs/imgui"]
+	path = extlibs/imgui
+	url = https://github.com/ocornut/imgui.git

@@ -22,18 +22,14 @@ namespace gloops {
 	}
 
 	Texture::Texture(int w, int h, int nchannels, const TexParams& params) 
-		: TexParams(params)
+		: Texture(params)
 	{
-		size = std::make_shared<Size>();
-		createGPUid();
 		allocate2D(w, h, nchannels);
 	}
 
 	Texture::Texture(int w, int h, int l, int nchannels, const TexParams& params)
-		: TexParams(params)
+		: Texture(params)
 	{
-		size = std::make_shared<Size>();
-		createGPUid();
 		allocate3D(w, h, l, nchannels);
 	}
 

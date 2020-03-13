@@ -1,8 +1,8 @@
 #include "Window.hpp"
 #include <iostream>
 
-#include <imgui-master/examples/imgui_impl_glfw.h>
-#include <imgui-master/examples/imgui_impl_opengl3.h>
+#include <examples/imgui_impl_glfw.h>
+#include <examples/imgui_impl_opengl3.h>
 
 #include "Texture.hpp"
 
@@ -67,15 +67,18 @@ namespace gloops {
 		setupGLFWcallback(glfwSetWindowPosCallback, [&](GLFWwindow* win, int w, int h) {
 			winResizeCallback(win, w, h);
 		});
+	
+		int version = gladLoadGL(); // gladLoadGL(glfwGetProcAddress);
+		std::cout << "OpenGL version " << version / 1000 << "." << version % 1000 << std::endl;
 
-		GLenum glew_init_code = glewInit();
-		if ( glew_init_code == GLEW_OK) {
-			std::string version_str = (const char*)glGetString(GL_VERSION);
-			std::cout << "OpenGL version " << version_str << std::endl;		
-		} else {
-			std::string glew_error_str = (const char*)glewGetErrorString(glew_init_code);
-			std::cout << " glewInit failed " << glew_error_str << std::endl;
-		}
+		//GLenum glew_init_code = glewInit();
+		//if ( glew_init_code == GLEW_OK) {
+		//	std::string version_str = (const char*)glGetString(GL_VERSION);
+		//	std::cout << "OpenGL version " << version_str << std::endl;		
+		//} else {
+		//	std::string glew_error_str = (const char*)glewGetErrorString(glew_init_code);
+		//	std::cout << " glewInit failed " << glew_error_str << std::endl;
+		//}
 
 		gl_check();
 
@@ -397,22 +400,22 @@ namespace gloops {
 			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PUSH_GROUP),
 			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_POP_GROUP),
 			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_OTHER),
-			GLOOPS_ENUM_STR(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_LOGGED_MESSAGES_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_NEXT_LOGGED_MESSAGE_LENGTH_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_CALLBACK_FUNCTION_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_CALLBACK_USER_PARAM_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_API_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_WINDOW_SYSTEM_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_SHADER_COMPILER_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_THIRD_PARTY_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_APPLICATION_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_ERROR_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PORTABILITY_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PERFORMANCE_ARB),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_OTHER_ARB)
+			//GLOOPS_ENUM_STR(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_LOGGED_MESSAGES_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_NEXT_LOGGED_MESSAGE_LENGTH_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_CALLBACK_FUNCTION_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_CALLBACK_USER_PARAM_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_API_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_WINDOW_SYSTEM_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_SHADER_COMPILER_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_THIRD_PARTY_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_APPLICATION_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_ERROR_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PORTABILITY_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PERFORMANCE_ARB),
+			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_OTHER_ARB)
 		};
 
 		//GLOOPS_ENUM_STR(GL_INVALID_ENUM),
@@ -449,12 +452,12 @@ namespace gloops {
 			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM, MEDIUM),
 			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW, LOW),
 			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_NOTIFICATION, NOTIFICATION),
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH_ARB, HIGH),
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM_ARB, MEDIUM),
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW_ARB, LOW),
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH_AMD, HIGH),
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM_AMD, MEDIUM),
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW_AMD, LOW)
+			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH_ARB, HIGH),
+			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM_ARB, MEDIUM),
+			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW_ARB, LOW),
+			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH_AMD, HIGH),
+			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM_AMD, MEDIUM),
+			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW_AMD, LOW)
 		};
 
 #undef GLOOPS_SEV_STR

@@ -139,9 +139,9 @@ namespace gloops {
 
 		static void errorCallback(void* userPtr, RTCError code, const char* str);
 
-		static DevicePtr device;
+		//static DevicePtr device;
 
-		void checkDevice() const;
+		static RTCDevice device();
 
 		void addMeshInternal(const Mesh& mesh);
 		void addMesh(){}

@@ -53,19 +53,14 @@ namespace gloops {
 		return coords;
 	}
 
-	Raycaster::DevicePtr Raycaster::device = {};
-
 	Raycaster::Raycaster() {
 
-		checkDevice();
-
-		scene = ScenePtr(rtcNewScene(device.get()), rtcReleaseScene);
+		scene = ScenePtr(rtcNewScene(device()), rtcReleaseScene);
 		sceneReady = std::make_shared<bool>(false);
 
 		context = ContextPtr(new RTCIntersectContext());
 		rtcInitIntersectContext(context.get());
 		//context->flags = RTC_INTERSECT_CONTEXT_FLAG_INCOHERENT;
-
 	}
 
 	Raycaster& Raycaster::operator=(const Raycaster& other)
@@ -84,13 +79,13 @@ namespace gloops {
 
 	void Raycaster::addMeshInternal(const Mesh& mesh)
 	{
-		ScenePtr localScene = ScenePtr(rtcNewScene(device.get()), rtcReleaseScene);
+		ScenePtr localScene = ScenePtr(rtcNewScene(device()), rtcReleaseScene);
 
 		GeometryPtr geometry = GeometryPtr(rtcNewGeometry(
-			device.get(), RTCGeometryType::RTC_GEOMETRY_TYPE_TRIANGLE), rtcReleaseGeometry);
+			device(), RTCGeometryType::RTC_GEOMETRY_TYPE_TRIANGLE), rtcReleaseGeometry);
 
 		GeometryPtr instance = GeometryPtr(rtcNewGeometry(
-			device.get(), RTCGeometryType::RTC_GEOMETRY_TYPE_INSTANCE), rtcReleaseGeometry);
+			device(), RTCGeometryType::RTC_GEOMETRY_TYPE_INSTANCE), rtcReleaseGeometry);
 
 		rtcAttachGeometry(localScene.get(), geometry.get());
 
@@ -188,12 +183,15 @@ namespace gloops {
 		}
 	}
 
-	void Raycaster::checkDevice() const
+	RTCDevice Raycaster::device()
 	{
-		if (!device) {
-			device = DevicePtr(rtcNewDevice(0), rtcReleaseDevice);
-			rtcSetDeviceErrorFunction(device.get(), &errorCallback, nullptr);
+		static DevicePtr _device = DevicePtr(rtcNewDevice(0), rtcReleaseDevice);
+		static bool first = true;
+		if (first) {
+			rtcSetDeviceErrorFunction(_device.get(), &errorCallback, nullptr);
+			first = false;
 		}
+		return _device.get();
 	}
 
 	void Raycaster::initRayHit(RTCRayHit& out, const Ray& ray, float near, float far) const

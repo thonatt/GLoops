@@ -218,7 +218,7 @@ SubWindow texture_subwin()
 			zoom.update2D(tmp, DefaultTexParams<Image4b>().disableMipmap().setMagFilter(GL_NEAREST));
 
 			ImGui::BeginTooltip();
-			ImGui::Image(zoom.getId(), { 100, 100 }, { 0,1 }, { 1,0 });
+			ImGui::Image((ImTextureID)zoom.getId(), { 100, 100 }, { 0,1 }, { 1,0 });
 			ImGui::EndTooltip();
 		}
 
@@ -385,6 +385,9 @@ SubWindow mesh_modes_subwin()
 	sub.setUpdateFunction([&](const Input& i) {
 		tb.update(i);
 		RaycastingCameraf eye(tb.getCamera(), i.viewport().diagonal().template cast<int>());
+		if (eye.w() == 0 || eye.h() == 0) {
+			return;
+		}
 		hit = tb.getRaycaster().intersect(eye.getRay(i.mousePosition<float>()));
 
 		if (hit.successful()) {

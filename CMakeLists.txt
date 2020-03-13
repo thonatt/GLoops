@@ -1,60 +1,70 @@
-#requires CURRENT_TARGET and GLOOPS_DIR to be set
-#defines gloopsFiles gloopsShaders gloopsImguiFiles
+project (GLoops)
+cmake_minimum_required(VERSION 3.1)
 
-set(GLOOPS_EXTLIBS_PATH "${GLOOPS_DIR}/extlibs/")
-set(GLOOPS_SRC_PATH "${GLOOPS_DIR}/gloops/")
+# EXTLIBS
+set(GLOOPS_EXTLIBS_PATH "${CMAKE_CURRENT_SOURCE_DIR}/extlibs/")
 
-include_directories( ${GLOOPS_DIR} ${GLOOPS_EXTLIBS_PATH} )
+### STB
+set(STB_PATH "${GLOOPS_EXTLIBS_PATH}/stb/")
 
-# GLOOPS CORE
-file(GLOB gloopsFiles "${GLOOPS_SRC_PATH}*.hpp" "${GLOOPS_SRC_PATH}*.cpp")
+### EIGEN
+set(GLOOPS_EIGEN_PATH "${GLOOPS_EXTLIBS_PATH}/eigen/")
 
-# SHADERS
-set(GLOOPS_SHADERS_PATH "${GLOOPS_SRC_PATH}/shaders/")
-file(GLOB gloopsShaders 
-	"${GLOOPS_SHADERS_PATH}*.vert" 
-	"${GLOOPS_SHADERS_PATH}*.frag" 
-	"${GLOOPS_SHADERS_PATH}*.geom")
 
-# IMGUI
-set(GLOOPS_IMGUI_PATH "${GLOOPS_EXTLIBS_PATH}/imgui-master/")
-set(GLOOPS_IMGUI_OPENGL "${GLOOPS_IMGUI_PATH}examples/imgui_impl_glfw")
-set(GLOOPS_IMGUI_GLFW "${GLOOPS_IMGUI_PATH}examples/imgui_impl_opengl3")
-file(GLOB gloopsImguiFiles "${GLOOPS_IMGUI_PATH}*.h" "${GLOOPS_IMGUI_PATH}*.cpp" 
-	"${GLOOPS_IMGUI_OPENGL}.h" "${GLOOPS_IMGUI_OPENGL}.cpp" 
-	"${GLOOPS_IMGUI_GLFW}.h" "${GLOOPS_IMGUI_GLFW}.cpp" )
+### GLFW
+set(GLOOPS_GLFW_PATH "${GLOOPS_EXTLIBS_PATH}/glfw/")
+set(GLOOPS_GLFW_INCLUDE "${GLOOPS_GLFW_PATH}/include/")
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "")
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "")
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "")
+set(GLFW_INSTALL OFF CACHE BOOL "")
+set(GLFW_DOCUMENT_INTERNALS OFF CACHE BOOL "")
+add_subdirectory(${GLOOPS_GLFW_PATH})
 
-include_directories(${GLOOPS_IMGUI_PATH})
+### GLAD
+set(GLOOPS_GLAD_INCLUDE "${GLOOPS_EXTLIBS_PATH}/glad/include/")
+set(GLOOPS_GLAD_SRC "${GLOOPS_EXTLIBS_PATH}/glad/src/glad.c")
+
+### IMGUI
+set(GLOOPS_IMGUI_PATH "${GLOOPS_EXTLIBS_PATH}/imgui/")
+file(GLOB GLOOPS_IMGUI_HEADERS "${GLOOPS_IMGUI_PATH}/*.h"
+	"${GLOOPS_IMGUI_PATH}/examples/imgui_impl_glfw.h"
+	"${GLOOPS_IMGUI_PATH}/examples/imgui_impl_opengl3.h")
+file(GLOB GLOOPS_IMGUI_SRC "${GLOOPS_IMGUI_PATH}/*.cpp"
+	"${GLOOPS_IMGUI_PATH}/examples/imgui_impl_glfw.cpp"
+	"${GLOOPS_IMGUI_PATH}/examples/imgui_impl_opengl3.cpp")
+set(GLOOPS_IMGUI_INCLUDE ${GLOOPS_IMGUI_PATH})
+
+### EMBREE 
+set(GLOOPS_EMBREE_PATH "${GLOOPS_EXTLIBS_PATH}/embree/")
+set(EMBREE_STATIC_LIB ON CACHE BOOL "")
+set(EMBREE_BACKFACE_CULLING ON CACHE BOOL "")
+set(EMBREE_TASKING_SYSTEM CACHE STRING "INTERNAL")
+set(EMBREE_ISPC_SUPPORT OFF CACHE BOOL "")
+set(EMBREE_TUTORIALS OFF CACHE BOOL "")
+add_subdirectory(${GLOOPS_EMBREE_PATH})
+set(GLOOPS_EMBREE_INCLUDE "${GLOOPS_EMBREE_PATH}/include/")
+
+### ASSIMP
+set(GLOOPS_ASSIMP_PATH "${GLOOPS_EXTLIBS_PATH}/assimp/")
+add_subdirectory(${GLOOPS_ASSIMP_PATH})
 
 # GLOOPS SETUP
+set(GLOOPS_SRC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/gloops/")
+set(GLOOPS_FILES ${GLOOPS_HEADERS} ${GLOOPS_SRC} PARENT_SCOPE)
+file(GLOB GLOOPS_HEADERS "${GLOOPS_SRC_PATH}*.hpp")
+file(GLOB GLOOPS_SRC "${GLOOPS_SRC_PATH}*.cpp" )
 
-source_group("gloops\\" FILES ${gloopsFiles})
-source_group("gloops\\shaders" FILES ${gloopsShaders})
-source_group("gloops\\imgui" FILES ${gloopsImguiFiles})
+add_library(GLoops STATIC ${GLOOPS_SRC} ${GLOOPS_HEADERS} ${GLOOPS_GLAD_SRC} 
+	${GLOOPS_IMGUI_SRC} ${GLOOPS_IMGUI_HEADERS})
 
-target_sources(${CURRENT_TARGET} PUBLIC ${gloopsFiles} ${gloopsShaders} ${gloopsImguiFiles})
+target_include_directories(GLoops PUBLIC . ${GLOOPS_EMBREE_INCLUDE}
+	${GLOOPS_GLAD_INCLUDE} ${GLOOPS_EIGEN_PATH} ${GLOOPS_IMGUI_PATH} ${STB_PATH})
 
-# GLEW
-find_package(OpenGL REQUIRED)
+add_compile_definitions(GLoops IMGUI_USER_CONFIG=<gloops/config_imgui.hpp>)
 
-set(GLEW_INCLUDE_DIR "${GLOOPS_EXTLIBS_PATH}/glew-2.1.0/include/")
-set(GLEW_SHARED_LIBRARY_RELEASE "${GLOOPS_EXTLIBS_PATH}/glew-2.1.0/lib/Release/x64/glew32.lib")
-find_package(GLEW REQUIRED)
-target_link_libraries(${CURRENT_TARGET} ${OPENGL_gl_LIBRARY} GLEW::GLEW)
-
-# GLFW
-find_package(GLFW3 3.3 REQUIRED HINTS "${GLOOPS_EXTLIBS_PATH}/glfw/lib/cmake/glfw3/")
-target_link_libraries(${CURRENT_TARGET} glfw ${GLFW_LIBRARIES})
-
-# EIGEN
-find_package (Eigen3 3.3 REQUIRED NO_MODULE HINTS "${GLOOPS_EXTLIBS_PATH}/Eigen3.3.7/share/eigen3/cmake/")
-target_link_libraries (${CURRENT_TARGET} Eigen3::Eigen)
-
-# ASSIMP
-find_package(assimp 5.0 REQUIRED HINTS "${GLOOPS_EXTLIBS_PATH}/Assimp/lib/cmake/assimp-5.0/")
-target_link_libraries(${CURRENT_TARGET} assimp::assimp)
-
-# EMBREE
-find_package(embree 3.0 REQUIRED HINTS "${GLOOPS_EXTLIBS_PATH}/Embree/")
-target_link_libraries(${CURRENT_TARGET} ${EMBREE_LIBRARIES})
-include_directories(${EMBREE_INCLUDE_DIRS})
+target_link_libraries(GLoops PUBLIC
+        glfw
+        assimp
+		embree
+)

@@ -2,10 +2,11 @@
 
 #include <cmath>
 
-#include <GL/glew.h>
+#include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include <imgui-master/imgui.h>
+#include "ImguiConfig.hpp"
+#include <imgui.h>
 
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
