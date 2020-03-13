@@ -5,7 +5,7 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include "ImguiConfig.hpp"
+#include "config_imgui.hpp"
 #include <imgui.h>
 
 #include <Eigen/Dense>
