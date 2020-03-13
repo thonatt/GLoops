@@ -13,3 +13,6 @@
 [submodule "extlibs/imgui"]
 	path = extlibs/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "extlibs/stb"]
+	path = extlibs/stb
+	url = https://github.com/nothings/stb.git
