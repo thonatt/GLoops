@@ -1,4 +1,4 @@
 # GLoops
 openGL Object-Oriented Programmer Starterpack
 
-![Demo example](example/screenshot.png)
+![Demo example](example/ressources/textures/screenshot.png)

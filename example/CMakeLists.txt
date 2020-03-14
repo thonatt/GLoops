@@ -9,6 +9,9 @@ file(GLOB GLOOPS_DEMO_SRC "*.cpp")
 add_executable(GLoops_demo ${GLOOPS_DEMO_SRC})
 
 # GLOOPS
-set(GLOOP_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../")
-add_subdirectory(${GLOOP_PATH} "${CMAKE_CURRENT_BINARY_DIR}/gloops/") 
+set(GLOOPS_DEMO_PATH ${CMAKE_CURRENT_SOURCE_DIR})
+set(GLOOPS_PATH "${GLOOPS_DEMO_PATH}/../")
+add_subdirectory(${GLOOPS_PATH} "${CMAKE_CURRENT_BINARY_DIR}/gloops/") 
 target_link_libraries(GLoops_demo GLoops)
+target_compile_definitions(GLoops_demo PUBLIC 
+	GLOOPS_DEMO_RESOURCES_PATH="${GLOOPS_DEMO_PATH}/ressources/")

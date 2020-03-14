@@ -15,9 +15,12 @@ static Window mainWin = Window("GLoops demos");
 static TexParams texParams = TexParams().enableMipmap().setMagFilter(GL_NEAREST);
 static TexParams cubeParams = TexParams().disableMipmap().setTarget(GL_TEXTURE_CUBE_MAP).setWrapAll(GL_CLAMP_TO_EDGE);
 
+static const std::string gloops_demo_shaders_folder = std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/shaders/";
+static const std::string gloops_demo_textures_folder = std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/textures/";
+
 Texture checkers_tex = Texture(checkersTexture(80, 80, 10), texParams), perlinTex, 
-	kittenTex = Texture::fromPath2D("../../kitten.png", texParams),
-	skyCube = Texture::fromPathCube("../../sky.png", cubeParams);
+	kittenTex = Texture::fromPath2D(gloops_demo_textures_folder + "kitten.png", texParams),
+	skyCube = Texture::fromPathCube(gloops_demo_textures_folder + "sky.png", cubeParams);
 
 static Texture displacement_tex = Texture(0.2f * perlinNoise(512, 512, 48), TexParams::RED32F);
 
@@ -673,6 +676,9 @@ SubWindow rayTracingWin()
 								sampleColor = lightColor;
 								continueRT = false; continue;
 							}
+							
+							color = 0.9 * color.cwiseProduct(col);
+
 							const v3f randomLightPos = surfaceLightPosition();
 							float distToLight = (randomLightPos - p).norm();
 
@@ -682,7 +688,7 @@ SubWindow rayTracingWin()
 								const float attenuation = std::clamp<float>(1.0f - (distToLight * distToLight) / (2.5f * 2.5f), 0, 1);
 
 								v3f illumination = (diffuse * attenuation) * lightColor;
-								color = 0.9 * color.cwiseProduct(col);
+								
 								//sampleColor += color.cwiseProduct(illumination);
 
 								sampleColor += color.cwiseProduct(lightColor) * diffuse;
@@ -759,116 +765,6 @@ SubWindow rayTracingWin()
 	return sub;
 }
 
-const std::string voxelgrid_vert_str = R"(
-		#version 420
-		layout(location = 0) in vec3 position;
-		uniform mat4 mvp;
-		out vec3 world_position;
-		void main() {
-			world_position = position;
-			gl_Position = mvp * vec4(position, 1.0);
-		}
-	)";
-
-const std::string voxelgrid_frag_str = R"(
-		#version 420
-		layout(location = 0) out vec4 outColor;
-		layout(binding = 0) uniform sampler3D tex; 
-
-		in vec3 world_position;
-		uniform vec3 eye_pos, bmin, bmax;
-		uniform ivec3 gridSize;
-		uniform mat4 mvp;
-		uniform float intensity;
-
-		vec4 sampleTex(ivec3 cell) {
-			return texture(tex, (vec3(cell) + 0.5)/vec3(gridSize));
-		}
-
-		vec4 sampleTex(vec3 pos) {
-			return texture(tex, (pos - bmin)/(bmax-bmin));
-		}
-
-		int getMinIndex(vec3 v) {
-			return v.x <= v.y ? (v.x <= v.z ? 0 : 2 ) : (v.y <= v.z ? 1 : 2);
-		}
-
-		float maxCoef(vec3 v){
-			return max(v.x,max(v.y,v.z));
-		}
-
-		float minCoef(vec3 v){
-			return min(v.x,min(v.y,v.z));
-		}
-
-		ivec3 getCell(vec3 p){
-			vec3 uv = (p - bmin)/(bmax - bmin);
-			return ivec3(floor(vec3(gridSize) * uv));
-		}
-
-		float boxIntersection(vec3 rayDir) {
-			vec3 minTs = (bmin - eye_pos)/rayDir;
-			vec3 maxTs = (bmax - eye_pos)/rayDir;
-
-			float nearT = maxCoef(min(minTs,maxTs)); 
-			float farT = minCoef(max(minTs,maxTs)); 
-			if( 0 <= nearT && nearT <= farT){
-				return nearT;
-			}
-			return -1.0;
-		}
-
-		void main(){
-	
-			vec3 dir = normalize(world_position - eye_pos);
-
-			//setup start
-			vec3 start = eye_pos;
-			
-			if(!(all(greaterThanEqual(eye_pos, bmin)) && all(greaterThanEqual(bmax, eye_pos)))){
-				float distToBox = boxIntersection(dir);
-				if(distToBox >= 0){
-					start = eye_pos + distToBox*dir;
-				} else {
-					discard;
-				}
-			} 
-
-			vec3 cellSize = (bmax - bmin)/vec3(gridSize); 
-			start = clamp(start, bmin, bmax - 0.001*cellSize);
-			ivec3 currentCell = getCell(start);
-
-			//setup raymarching
-			vec3 deltas = cellSize / abs(dir);
-			vec3 fracs = fract((start - bmin)/cellSize);			
-			vec3 ts;
-			ivec3 finalCell, steps;
-			for(int k=0; k<3; ++k){
-				steps[k] = (dir[k] >= 0 ? 1 : -1);
-				ts[k] = deltas[k] * (dir[k] >= 0 ? 1.0 - fracs[k] : fracs[k]);
-				finalCell[k] = (dir[k] >= 0 ? gridSize[k] : -1);
-			}
-
-			float t = 0, alpha = 0;
-
-			//actual raymarching
-			do {
-				int c = getMinIndex(ts);
-				currentCell[c] += steps[c];
-
-				float delta_t = ts[c] - t;
-				t = ts[c];
-
-				ts[c] += deltas[c];
-				
-				alpha += delta_t * sampleTex(currentCell).x;
-
-			} while (all(notEqual(currentCell, finalCell)));
-			
-			outColor = vec4(mix(vec3(1,1,0),vec3(1), intensity*alpha),  min(5*alpha, 1.0));
-		}
-	)";
-
 SubWindow raymarching_win()
 {
 	SubWindow win = SubWindow("raymarching", v2i(400, 400));
@@ -885,8 +781,12 @@ SubWindow raymarching_win()
 	static Uniform<v3f> eye_pos = { "eye_pos" }, bmax = { "bmax", 0.5*v3f(1,1,1) }, bmin = { "bmin", 0.5*v3f(-1,-1,-1) };
 	static Uniform<v3i> gridSize = { "gridSize", 256*v3i(1,1,1) };
 	static Uniform<float> intensity = { "intensity" , 3.0f };
-	shader.init(voxelgrid_vert_str, voxelgrid_frag_str);
-	shader.addUniforms(shaders.mvp, eye_pos, bmin, bmax, gridSize, intensity);
+	shader.init(
+		gloops::ShaderCollection::vertexMeshInterface(), 
+		gloops::loadFile(std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/shaders/voxel_grid_raymarching.frag")
+	);
+
+	shader.addUniforms(shaders.vp, shaders.model, eye_pos, bmin, bmax, gridSize, intensity);
 
 	const int a = 50;
 	const int w = a, h = a, d = a;
@@ -927,11 +827,12 @@ SubWindow raymarching_win()
 
 		shaders.renderCubemap(eye, { 0,0,0 }, 100, skyCube);
 
-		shaders.mvp = eye.viewProj();
+		shaders.vp = eye.viewProj();
+		shaders.model = m4f::Identity();
+
 		density.bindSlot(GL_TEXTURE0);
 		shader.use();
 		eye.getQuad(2.5f*eye.zNear()).draw();
-
 	});
 
 	return win;
