@@ -397,6 +397,11 @@ namespace gloops {
 			return MeshGL::quad(center, vertices[2] - center, vertices[1] - center);
 		}
 
+		MeshGL getQuadFront(T dist) const
+		{
+			return getQuad(dist / std::cos(Camera<T>::fovy() / T(2)));
+		}
+
 		MeshGL getCamStub(T near, T far) const
 		{
 			static const Mesh::Triangles tris = {

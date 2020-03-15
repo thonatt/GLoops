@@ -142,45 +142,47 @@ namespace gloops {
 
 	void Raycaster::checkScene() const
 	{
-		if (!(*sceneReady)) {
-			for (const auto& mesh : meshes) {
-				const auto& m = mesh.second;
+		if (*sceneReady) {
+			return;
+		}
 
-				if (*m.dirtyGeometry) {
-					using Triangle = Mesh::Tri;
-					using Vertice = Mesh::Vert;
+		for (const auto& mesh : meshes) {
+			const auto& m = mesh.second;
 
-					const auto& tris = m.mesh.getTriangles();
-					const auto& verts = m.mesh.getVertices();
+			if (*m.dirtyGeometry) {
+				using Triangle = Mesh::Tri;
+				using Vertice = Mesh::Vert;
 
-					Triangle* dst_tris = reinterpret_cast<Triangle*>(rtcSetNewGeometryBuffer(
-						m.geometry.get(), RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, sizeof(Triangle), tris.size()));
-					for (uint i = 0; i < tris.size(); ++i, ++dst_tris) {
-						*dst_tris = tris[i];
-					}
+				const auto& tris = m.mesh.getTriangles();
+				const auto& verts = m.mesh.getVertices();
 
-					Vertice* dst_verts = reinterpret_cast<Vertice*>(rtcSetNewGeometryBuffer(
-						m.geometry.get(), RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(Vertice), verts.size()));
-					for (uint i = 0; i < verts.size(); ++i, ++dst_verts) {
-						*dst_verts = verts[i]; //applyTransformationMatrix(mesh.model(), verts[i]);
-					}
-					rtcCommitGeometry(m.geometry.get());
-					rtcCommitScene(m.scene.get());
-					*m.dirtyGeometry = false;
+				Triangle* dst_tris = reinterpret_cast<Triangle*>(rtcSetNewGeometryBuffer(
+					m.geometry.get(), RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, sizeof(Triangle), tris.size()));
+				for (uint i = 0; i < tris.size(); ++i, ++dst_tris) {
+					*dst_tris = tris[i];
 				}
 
-				if (*m.dirtyModel) {
-					rtcSetGeometryTransform(m.instance.get(), 0, RTCFormat::RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, m.mesh.model().data());
-					rtcCommitGeometry(m.instance.get());
-
-					*m.dirtyModel = false;
+				Vertice* dst_verts = reinterpret_cast<Vertice*>(rtcSetNewGeometryBuffer(
+					m.geometry.get(), RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(Vertice), verts.size()));
+				for (uint i = 0; i < verts.size(); ++i, ++dst_verts) {
+					*dst_verts = verts[i];
 				}
-				
+				rtcCommitGeometry(m.geometry.get());
+				rtcCommitScene(m.scene.get());
+				*m.dirtyGeometry = false;
 			}
 
-			rtcCommitScene(scene.get());
-			*sceneReady = true;
+			if (*m.dirtyModel) {
+				rtcSetGeometryTransform(m.instance.get(), 0, RTCFormat::RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, m.mesh.model().data());
+				rtcCommitGeometry(m.instance.get());
+
+				*m.dirtyModel = false;
+			}
+
 		}
+
+		rtcCommitScene(scene.get());
+		*sceneReady = true;
 	}
 
 	RTCDevice Raycaster::device()

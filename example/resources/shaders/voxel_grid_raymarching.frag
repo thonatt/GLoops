@@ -3,7 +3,6 @@
 layout(location = 0) out vec4 outColor;
 layout(binding = 0) uniform sampler3D tex; 
 
-
 in VertexData {
 	vec3 position, normal, color;
 	vec2 uv;
@@ -11,7 +10,6 @@ in VertexData {
 
 uniform vec3 eye_pos, bmin, bmax;
 uniform ivec3 gridSize;
-uniform mat4 mvp;
 uniform float intensity;
 
 vec4 sampleTex(ivec3 cell) {
@@ -93,9 +91,10 @@ void main(){
 		t = ts[c];
 
 		ts[c] += deltas[c];
-				
+		
 		alpha += delta_t * sampleTex(currentCell).x;
-
+		//delta_t * sampleTex(start + (t - 0.5*delta_t)*dir).x;
+	
 	} while (all(notEqual(currentCell, finalCell)));
 			
 	outColor = vec4(mix(vec3(1,1,0),vec3(1), intensity*alpha),  min(5*alpha, 1.0));

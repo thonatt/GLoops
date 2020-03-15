@@ -334,6 +334,21 @@ namespace gloops {
 		return static_cast<T>(static_cast<double>(angle_rad) * 360.0 / (2 * pi<double>()));
 	}
 
+	template<typename T_out, typename T_in, int N>
+	Vec<T_out, N> ceil(const Vec<T_in, N>& vec) {
+		return vec.unaryExpr([](T_in t) { return std::ceil(t); }).template cast<T_out>();
+	}
+
+	template<typename T_out, typename T_in, int N>
+	Vec<T_out, N> floor(const Vec<T_in, N>& vec) {
+		return vec.unaryExpr([](T_in t) { return std::floor(t); }).template cast<T_out>();
+	}
+
+	template<typename T_out, typename T_in, int N>
+	Vec<T_out, N> round(const Vec<T_in, N>& vec) {
+		return vec.unaryExpr([](T_in t) { return std::round(t); }).template cast<T_out>();
+	}
+
 	template<typename T>
 	Eigen::Matrix<T, 4, 4> rotationMatrix(const Eigen::Matrix<T, 3, 3>& rot) {
 		Eigen::Matrix<T, 4, 4> out = Eigen::Matrix<T, 4, 4>::Identity();

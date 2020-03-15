@@ -349,6 +349,9 @@ namespace gloops {
 
 		static void bindDefault(GLenum target = GL_FRAMEBUFFER);
 
+		static GLint maxDrawBuffers();
+		static GLint maxColorAttachments();
+
 	protected:
 		void createBuffer();
 		void createDepth(int w, int h);

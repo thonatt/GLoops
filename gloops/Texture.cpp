@@ -256,11 +256,9 @@ namespace gloops {
 		createBuffer();
 		createDepth(_w, _h);
 
-		GLint maxAttachments = 0;
-		glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAttachments);
-		if (numAttachments > maxAttachments) {
-			std::cout << "trying to setup " << numAttachments << " color attachments, " << maxAttachments << " used instead" << std::endl;
-			numAttachments = maxAttachments;
+		if (numAttachments > maxColorAttachments()) {
+			std::cout << "trying to setup " << numAttachments << " color attachments, " << maxColorAttachments() << " used instead" << std::endl;
+			numAttachments = maxColorAttachments();
 		}
 
 		for (int i = 0; i < numAttachments; ++i) {
@@ -318,16 +316,14 @@ namespace gloops {
 
 	void Framebuffer::bindDraw(const Viewporti& vp) const
 	{
-		GLint maxDrawBuffers = 0;
-		glGetIntegerv(GL_MAX_DRAW_BUFFERS, &maxDrawBuffers);
-		if (attachments.size() > maxDrawBuffers) {
-			std::cout << "trying to draw to " << attachments.size() << " buffers, maximum available is " << maxDrawBuffers << std::endl;
+		if (attachments.size() > maxDrawBuffers()) {
+			std::cout << "trying to draw " << attachments.size() << " buffers, " << maxDrawBuffers() << " used instead" << std::endl;
 		}
 
 		bind();
 		int count = 0;
 		for (const auto& attachment : attachments) {
-			if (count == maxDrawBuffers) {
+			if (count == maxDrawBuffers()) {
 				break;
 			}
 			glDrawBuffers(1, &attachment.first);
@@ -406,6 +402,28 @@ namespace gloops {
 	void Framebuffer::bindDefault(GLenum target)
 	{
 		glBindFramebuffer(target, 0);
+	}
+
+	GLint Framebuffer::maxDrawBuffers()
+	{
+		static GLint maxDrawBuffers = [] {
+			GLint _maxDrawBuffers = 0;
+			glGetIntegerv(GL_MAX_DRAW_BUFFERS, &_maxDrawBuffers);
+			return _maxDrawBuffers;
+		}();
+
+		return maxDrawBuffers;
+	}
+
+	GLint Framebuffer::maxColorAttachments()
+	{
+		static GLint maxAttachments = [] {
+			GLint _maxAttachments = 0;
+			glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &_maxAttachments);
+			return _maxAttachments;
+		}();
+
+		return maxAttachments;
 	}
 
 	void Framebuffer::createBuffer()

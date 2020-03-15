@@ -767,6 +767,14 @@ SubWindow rayTracingWin()
 
 SubWindow raymarching_win()
 {
+	enum class Mode { GRID, SLICE, ISOSURFACE };
+	static const std::map<Mode, std::string> modes = {
+		{ Mode::GRID, "Grid" },
+		{ Mode::SLICE, "Slice" },
+		{ Mode::ISOSURFACE, "Iso surface" },
+	};
+	static Mode mode = Mode::GRID;
+
 	SubWindow win = SubWindow("raymarching", v2i(400, 400));
 
 	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube().setScaling(0.3f));
@@ -776,22 +784,37 @@ SubWindow raymarching_win()
 		tb.update(i);
 	});
 
+	static MeshGL unitCube = gloops::Mesh::getCube();
+	unitCube.backface_culling = false;
+
 	static ShaderCollection shaders;
-	static ShaderProgram shader;
+	static ShaderProgram shaderRaymarching, shaderSlice, shaderSDF;
 	static Uniform<v3f> eye_pos = { "eye_pos" }, bmax = { "bmax", 0.5*v3f(1,1,1) }, bmin = { "bmin", 0.5*v3f(-1,-1,-1) };
-	static Uniform<v3i> gridSize = { "gridSize", 256*v3i(1,1,1) };
-	static Uniform<float> intensity = { "intensity" , 3.0f };
-	shader.init(
+	static Uniform<v3i> gridSize = { "gridSize", 256 * v3i(1,1,1) };
+	static Uniform<float> intensity = { "intensity" , 3.0f }, sdf_offset = { "sdf_offset", 0.0f };
+	
+	shaderRaymarching.init(
 		gloops::ShaderCollection::vertexMeshInterface(), 
 		gloops::loadFile(std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/shaders/voxel_grid_raymarching.frag")
 	);
+	shaderRaymarching.addUniforms(shaders.vp, shaders.model, eye_pos, bmin, bmax, gridSize, intensity);
 
-	shader.addUniforms(shaders.vp, shaders.model, eye_pos, bmin, bmax, gridSize, intensity);
+	shaderSlice.init(
+		gloops::ShaderCollection::vertexMeshInterface(),
+		gloops::loadFile(std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/shaders/texture3D_slice.frag")
+	);
+	shaderSlice.addUniforms(shaders.vp, shaders.model, bmin, bmax);
 
-	const int a = 50;
+	shaderSDF.init(
+		gloops::ShaderCollection::vertexMeshInterface(),
+		gloops::loadFile(std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/shaders/texture3D_sdf.frag")
+	);
+	shaderSDF.addUniforms(shaders.vp, shaders.model, eye_pos, bmin, bmax, gridSize, sdf_offset);
+
+	const int a = 64;
 	const int w = a, h = a, d = a;
 	TexParams params;
-	params.setTarget(GL_TEXTURE_3D).setFormat(GL_RED).setInternalFormat(GL_R8).disableMipmap();
+	params.setTarget(GL_TEXTURE_3D).setFormat(GL_RED).setInternalFormat(GL_R8).setWrapAll(GL_CLAMP_TO_BORDER);
 	
 	static Texture density = Texture(w, h, d, 1, params);
 	std::vector<uchar> voxelData(w * h * d, 0);
@@ -799,7 +822,7 @@ SubWindow raymarching_win()
 		for (int j = 0; j < h; ++j) {
 			for (int k = 0; k < w; ++k) {
 				float x = 1.0f + 1.0f*(randomVec<float, 1>().x());
-				float di = (float)(i - d / 2), dj = (float)(j - h / 2), dk = (float)(k - w / 2);
+				float di = i - d / 2.0f, dj = j - h / 2.0f, dk = k - w / 2.0f;
 				float diff = exp(-(di * di + dj * dj + dk * dk)/(2*a));
 				voxelData[k + w * (j + h * i)] = saturate_cast<uchar>(255.0f * diff * x);
 			}
@@ -807,17 +830,38 @@ SubWindow raymarching_win()
 	}
 	density.updloadToGPU3D(0, 0, 0, 0, w, h, d, voxelData.data());
 
+	static bool slice = false;
+	static float slice_range = 0;
+
 	win.setGuiFunction([&] {
+		int mode_id = 0;
+		for (const auto& imode : modes) {
+			if (ImGui::RadioButton((imode.second).c_str(), mode == imode.first)) {
+				mode = imode.first;
+			}
+			if (mode_id != ((int)modes.size() - 1)) {
+				ImGui::SameLine();
+			}
+			++mode_id;
+		}
+
 		if (ImGui::SliderInt("grid size", &gridSize.get()[0], 1, 512)) {
 			gridSize = gridSize.get()[0] * v3i(1, 1, 1);
 		}
-		ImGui::SliderFloat("intensity", &intensity.get(), 2, 4);
+		if (mode == Mode::GRID) {
+			ImGui::SliderFloat("intensity", &intensity.get(), 2, 4);
+		}
+		if (mode == Mode::SLICE) {
+			ImGui::SliderFloat("slice range", &slice_range, -.5f, .5f);
+		}
+		if (mode == Mode::ISOSURFACE) {
+			ImGui::SliderFloat("isosurface value", &sdf_offset.get(), 0, 1);
+		}	
 	});
 
 	win.setRenderingFunction([&](Framebuffer& dst) {
 		const RaycastingCameraf eye = RaycastingCameraf(tb.getCamera(), v2i(dst.w(), dst.h()));
-		eye_pos = eye.position(); 
-		
+			
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glBlendEquation(GL_FUNC_ADD);
@@ -827,12 +871,28 @@ SubWindow raymarching_win()
 
 		shaders.renderCubemap(eye, { 0,0,0 }, 100, skyCube);
 
+		eye_pos = eye.position();
 		shaders.vp = eye.viewProj();
 		shaders.model = m4f::Identity();
 
 		density.bindSlot(GL_TEXTURE0);
-		shader.use();
-		eye.getQuad(2.5f*eye.zNear()).draw();
+
+		switch (mode)
+		{
+		case Mode::SLICE: {
+			shaderSlice.use();
+			eye.getQuadFront(eye_pos.get().norm() + slice_range).draw();
+			break;
+		}
+		case Mode::ISOSURFACE: {
+			shaderSDF.use();
+			unitCube.draw();
+			break;
+		}
+		default:
+			shaderRaymarching.use();
+			unitCube.draw();
+		}
 	});
 
 	return win;
