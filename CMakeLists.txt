@@ -80,7 +80,13 @@ file(GLOB GLOOPS_HEADERS "${GLOOPS_SRC_PATH}*.hpp")
 file(GLOB GLOOPS_SRC "${GLOOPS_SRC_PATH}*.cpp" )
 file(GLOB GLOOPS_SHADERS "${GLOOPS_SHADERS_PATH}/*.*")
 
-add_library(GLoops STATIC ${GLOOPS_SRC} ${GLOOPS_HEADERS} )
+option(GLOOPS_STATIC "Build GLoops as static library, will be shared otherwise" ON)
+
+if(GLOOPS_STATIC)
+	add_library(GLoops STATIC ${GLOOPS_SRC} ${GLOOPS_HEADERS} )
+else()
+	add_library(GLoops SHARED ${GLOOPS_SRC} ${GLOOPS_HEADERS} )
+endif()
 
 target_include_directories(GLoops PUBLIC . 
 	${GLOOPS_EMBREE_INCLUDE} ${GLOOPS_EIGEN_PATH} ${STB_PATH}

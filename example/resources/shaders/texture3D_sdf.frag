@@ -13,7 +13,7 @@ uniform ivec3 gridSize;
 uniform float sdf_offset = 0.0, epsilon = 0.001;
 
 float sampleTex(vec3 pos) {
-	return texture(tex, (pos - bmin)/(bmax-bmin)).x;
+	return 1.0 - texture(tex, (pos - bmin)/(bmax-bmin)).x;
 }
 
 float maxCoef(vec3 v){
@@ -120,25 +120,19 @@ void main(){
 		
 		float d = sampleTex(start + t*dir);
 
-		if(d >= sdf_offset) {
+		if(d < sdf_offset) {
 			float previous_d = sampleTex(start + (t - delta_t)*dir);
-			float interpolated_t = t - d*delta_t / (d - previous_d);
+			float interpolated_t = t - (d - sdf_offset) *delta_t / (d - previous_d);
 
 			vec3 p = start + interpolated_t*dir;
 			
-//			const vec2 k = vec2(1,-1);
-//			vec3 N = normalize( 
-//				k.xyy*sampleTex( p + k.xyy*epsilon ) + 
-//                k.yyx*sampleTex( p + k.yyx*epsilon ) + 
-//                k.yxy*sampleTex( p + k.yxy*epsilon ) + 
-//                k.xxx*sampleTex( p + k.xxx*epsilon ) 
-//			);
-			const vec2 h = vec2(epsilon, 0);
-			vec3 N = normalize(vec3(
-				sampleTex(p+h.xyy) - sampleTex(p-h.xyy),
-				sampleTex(p+h.yxy) - sampleTex(p-h.yxy),
-				sampleTex(p+h.yyx) - sampleTex(p-h.yyx)
-			) );
+			const vec2 k = vec2(1,-1);
+			vec3 N = normalize( 
+				k.xyy*sampleTex( p + k.xyy*epsilon ) + 
+                k.yyx*sampleTex( p + k.yyx*epsilon ) + 
+                k.yxy*sampleTex( p + k.yxy*epsilon ) + 
+                k.xxx*sampleTex( p + k.xxx*epsilon ) 
+			);
 
 			vec3 L = normalize(eye_pos - p);
 			vec3 R = reflect(-L,N);
@@ -146,13 +140,11 @@ void main(){
 			float specular = max(0.0, dot(R,L));
 			
 			outColor = vec4(0.5*vec3(0.7) + (0.3*diffuse + 0.2*specular)*vec3(1.0) , 1.0);
-			outColor = vec4(vec3(0.5*N + 0.5), 1.0);
-			outColor = vec4(vec3(interpolated_t), 1.0);
+			//outColor = vec4(vec3(0.5*N + 0.5), 1.0);
+			//outColor = vec4(vec3(interpolated_t), 1.0);
 			
 			return;
 		}
-
-		//delta_t * sampleTex(start + (t - 0.5*delta_t)*dir).x;
 	
 	} while (all(notEqual(currentCell, finalCell)));
 

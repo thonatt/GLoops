@@ -1,5 +1,6 @@
 #include "Mesh.hpp"
 #include "Debug.hpp"
+#include "Utils.hpp"
 
 #include <cstring>
 #include <cmath>

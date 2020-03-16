@@ -6,6 +6,7 @@
 
 #include "Texture.hpp"
 #include "Mesh.hpp"
+#include "Utils.hpp"
 
 namespace gloops {
 

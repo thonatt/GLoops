@@ -5,6 +5,7 @@
 #include <examples/imgui_impl_opengl3.h>
 
 #include "Texture.hpp"
+#include "Debug.hpp"
 
 namespace gloops {
 
@@ -69,19 +70,8 @@ namespace gloops {
 		});
 	
 		int version = gladLoadGL(); // gladLoadGL(glfwGetProcAddress);
-		std::cout << "OpenGL version " << version / 1000 << "." << version % 1000 << std::endl;
-
-		//GLenum glew_init_code = glewInit();
-		//if ( glew_init_code == GLEW_OK) {
-		//	std::string version_str = (const char*)glGetString(GL_VERSION);
-		//	std::cout << "OpenGL version " << version_str << std::endl;		
-		//} else {
-		//	std::string glew_error_str = (const char*)glewGetErrorString(glew_init_code);
-		//	std::cout << " glewInit failed " << glew_error_str << std::endl;
-		//}
-
-		gl_check();
-
+		std::cout << "OpenGL version " << GLVersion.major << "." << GLVersion.minor << std::endl;
+		
 		glEnable(GL_DEBUG_OUTPUT);
 		glDebugMessageCallback(glErrorCallBack, 0);
 
@@ -143,14 +133,8 @@ namespace gloops {
 
 	void Window::pollEvents()
 	{
-		//std::swap(mouseStatus, mouseStatusPrevious);
-		//std::swap(keyStatus, keyStatusPrevious);
-
 		mouseStatusPrevious = mouseStatus;
 		keyStatusPrevious = keyStatus;
-
-		//std::swap(currentStatus, previousStatus);
-		//currentStatus.clear();
 
 		_mouseScroll = { 0, 0 };
 
@@ -159,7 +143,6 @@ namespace gloops {
 		if (keyReleased(GLFW_KEY_ESCAPE)) {
 			glfwSetWindowShouldClose(window.get(), GLFW_TRUE);
 		}
-
 	}
 
 	void Window::swapBuffers()
@@ -207,7 +190,6 @@ namespace gloops {
 	void Window::bind() const
 	{
 		Framebuffer::bindDefault();
-		//glViewport(0, 0, winSize()[0], winSize()[1]);
 	}
 
 	void Window::displayFramebuffer(const Framebuffer& src)
@@ -230,8 +212,7 @@ namespace gloops {
 	void Window::renderingLoop(const std::function<void()>& renderingFunc)
 	{
 		bool pause = false, pauseNext = false;
-
-		bool showImGuiDemo = false, showDebug = false;
+		bool showImGuiDemo = false, showDebug = false, showLogs = false;
 
 		while (!shouldClose()) {
 
@@ -249,6 +230,7 @@ namespace gloops {
 					ImGui::MenuItem("Automatic layout", 0, &automaticLayout);	
 					ImGui::MenuItem("Pause", 0, &pauseNext);
 					ImGui::MenuItem("Debug", 0, &showDebug);
+					ImGui::MenuItem("Logs", 0, &showLogs);
 					ImGui::MenuItem("ImGui demo", 0, &showImGuiDemo);		
 					ImGui::SliderFloat("Ratio rendering/gui", &ratio_rendering_gui, 0, 1);
 					ImGui::EndMenu();
@@ -257,7 +239,7 @@ namespace gloops {
 			}
 
 			if (automaticLayout) {
-				automatic_subwins_layout();
+				automaticSubwinsLayout();
 			}
 
 			if (showDebug) {
@@ -270,6 +252,10 @@ namespace gloops {
 				ImGui::End();
 			}
 			
+			if (showLogs) {
+				getDebugLogs().show(*this);
+			}
+
 			if (!pause) {
 				renderingFunc();
 			} 
@@ -291,7 +277,6 @@ namespace gloops {
 	{
 		if (key >= 0) {
 			keyStatus[key] = action;
-			//currentStatus[std::make_pair(InputType::KEYBOARD, key)] = action;
 		} else {
 			std::cout << "unknown key" << std::endl;
 		}
@@ -339,7 +324,7 @@ namespace gloops {
 		_viewport = Viewportd(v2d(0, menuBarSize.y()), size.template cast<double>());
 	}
 
-	void Window::automatic_subwins_layout()
+	void Window::automaticSubwinsLayout()
 	{
 		size_t num_render_win = 0, num_gui_win = 0; 
 		for (const auto& win : subWinsCurrent) {
@@ -384,111 +369,10 @@ namespace gloops {
 		}
 	}
 
-	void Window::glErrorCallBack(GLenum source, GLenum type, GLuint id, GLenum severity,
-		GLsizei length, const GLchar* message, const void* userParam)
-	{
-
-#define GLOOPS_ENUM_STR(name) { name, #name }
-
-		static const std::map<GLenum, std::string> errors = {
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_ERROR),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PORTABILITY),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PERFORMANCE),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_MARKER),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PUSH_GROUP),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_POP_GROUP),
-			GLOOPS_ENUM_STR(GL_DEBUG_TYPE_OTHER),
-			//GLOOPS_ENUM_STR(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_LOGGED_MESSAGES_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_NEXT_LOGGED_MESSAGE_LENGTH_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_CALLBACK_FUNCTION_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_CALLBACK_USER_PARAM_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_API_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_WINDOW_SYSTEM_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_SHADER_COMPILER_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_THIRD_PARTY_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_APPLICATION_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_ERROR_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PORTABILITY_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_PERFORMANCE_ARB),
-			//GLOOPS_ENUM_STR(GL_DEBUG_TYPE_OTHER_ARB)
-		};
-
-		//GLOOPS_ENUM_STR(GL_INVALID_ENUM),
-		//GLOOPS_ENUM_STR(GL_INVALID_VALUE),
-		//GLOOPS_ENUM_STR(GL_INVALID_OPERATION),
-		//GLOOPS_ENUM_STR(GL_STACK_OVERFLOW),
-		//GLOOPS_ENUM_STR(GL_STACK_UNDERFLOW),
-		//GLOOPS_ENUM_STR(GL_OUT_OF_MEMORY),
-		//GLOOPS_ENUM_STR(GL_INVALID_FRAMEBUFFER_OPERATION),
-		//GLOOPS_ENUM_STR(GL_MAX_DEBUG_MESSAGE_LENGTH_ARB),
-		//GLOOPS_ENUM_STR(GL_MAX_DEBUG_LOGGED_MESSAGES_ARB),
-
-		static const std::map<GLenum, std::string> sources_str = {
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_API),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_WINDOW_SYSTEM),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_SHADER_COMPILER),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_THIRD_PARTY),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_APPLICATION),
-			GLOOPS_ENUM_STR(GL_DEBUG_SOURCE_OTHER)
-		};
-
-#undef GLOOPS_ENUM_STR
-
-		enum class SeveriyLevel : uint { NOTIFICATION = 0, LOW = 1, MEDIUM = 2, HIGH = 3, UNKNOWN = 4 };
-		struct GLseverity {
-			std::string str;
-			SeveriyLevel lvl = SeveriyLevel::UNKNOWN;
-		};
-
-#define GLOOPS_SEV_STR(name,sev) { name, { #name, SeveriyLevel::sev } }
-
-		static const std::map<GLenum, GLseverity> severities = {
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH, HIGH),
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM, MEDIUM),
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW, LOW),
-			GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_NOTIFICATION, NOTIFICATION),
-			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH_ARB, HIGH),
-			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM_ARB, MEDIUM),
-			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW_ARB, LOW),
-			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_HIGH_AMD, HIGH),
-			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_MEDIUM_AMD, MEDIUM),
-			//GLOOPS_SEV_STR(GL_DEBUG_SEVERITY_LOW_AMD, LOW)
-		};
-
-#undef GLOOPS_SEV_STR
-
-		GLseverity glSev;
-		auto sev_it = severities.find(severity);
-		if (sev_it != severities.end()) {
-			glSev = sev_it->second;
-		} else {
-			glSev.str = "UNKOWN SEVERITY";
-			glSev.lvl = SeveriyLevel::UNKNOWN;
-		}
-
-		if ((uint)glSev.lvl < (uint)SeveriyLevel::LOW) {
-			return;
-		}
-
-		std::string err_str = "UNKNOWN GL ERROR";
-		auto err_it = errors.find(type);
-		if (err_it != errors.end()) {
-			err_str = err_it->second;
-		}
-
-		std::cout << "GL callback :  source : " << sources_str.at(source) << ", error = " << err_str <<
-			", severity = " << glSev.str << "\n" << message << std::endl;
-	}
-
 	size_t WindowComponent::counter = 0;
 
-	WindowComponent::WindowComponent(const std::string& name, Type type, const Func& guiFunc, const v2f& weights)
-		: Viewportd(v2d(0, 0), v2d(1, 1)), _name(name), _guiFunc(guiFunc), _type(type), _weights(weights), id(counter)
+	WindowComponent::WindowComponent(const std::string& name, Type type, const Func& guiFunc)
+		: Viewportd(v2d(0, 0), v2d(1, 1)), _name(name), _guiFunc(guiFunc), _type(type), id(counter)
 	{
 		++counter;
 	}
@@ -517,9 +401,6 @@ namespace gloops {
 			}
 			if (win.automaticLayout && (_type == Type::GUI || _type == Type::RENDERING)) {
 				imguiWinFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus;
-			}
-			if (_type == Type::DEBUG) {
-				imguiWinFlags |= ImGuiWindowFlags_AlwaysAutoResize;
 			}
 
 			if (ImGui::Begin(_name.c_str(), 0, imguiWinFlags)) {
@@ -575,11 +456,6 @@ namespace gloops {
 	WindowComponent::Type WindowComponent::getType() const
 	{
 		return _type;
-	}
-
-	const v2f& WindowComponent::weights() const
-	{
-		return _weights;
 	}
 
 	//bool WindowComponent::operator<(const WindowComponent& other) const
@@ -756,6 +632,27 @@ namespace gloops {
 
 				ImGui::EndMenu();
 			}
+
+			if (ImGui::BeginMenu(gui_text("save").c_str())) {
+				std::stringstream filename;
+				filename << win_name << "_" << ImGui::GetTime();
+				std::string file = filename.str();
+				std::replace(file.begin(), file.end(), ' ', '_');
+				std::replace(file.begin(), file.end(), '.', '_');
+
+				if (ImGui::Button("jpg")) {
+					Image4b img;
+					framebuffer.readBack(img);
+					img.convert<uchar, 3>().flip().save(file + ".jpg");
+				}
+				if (ImGui::Button("png")) {
+					Image4b img;
+					framebuffer.readBack(img);
+					img.convert<uchar, 3>().flip().save(file + ".png");
+				}
+				ImGui::EndMenu();
+			}
+
 			ImGui::EndMenuBar();
 		}
 

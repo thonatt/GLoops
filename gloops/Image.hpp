@@ -1,11 +1,21 @@
 #pragma once
 
+#include <filesystem>
 #include "config.hpp"
+#include "Debug.hpp"
 
 namespace gloops {
 
-	uchar* stbiImageLoad(const std::string& path, int& w, int& h, int& n);
-	void stbiImageFree(uchar* ptr);
+	namespace stb {
+	
+		uchar* stbiImageLoad(const std::string& path, int& w, int& h, int& n);
+		void stbiImageFree(uchar* ptr);
+
+		void stbiImageWritePNG(const std::string& path, int x, int y, int comp, const void* data, int stride_bytes);
+		void stbiImageWriteJPG(const std::string& path, int w, int h, int comp, const void* data, int quality);
+	}
+	
+
 
 	template<typename T, int N>
 	class Image {
@@ -71,29 +81,46 @@ namespace gloops {
 			return (x >= 0 && y >= 0 && x < w() && y < h());
 		}
 
-		void load(const std::string& path)
+		bool load(const std::string& path)
 		{
 			static_assert(std::is_same_v<T, uchar>, "GLoops only support uchar sbti image loads");
 
 			int  w, h, n = N;
-			uchar* data_ptr = stbiImageLoad(path, w, h, n);
+			uchar* data_ptr = stb::stbiImageLoad(path, w, h, n);
 
 			if (n != N) {
 				std::cout << " wrong number of channels when loading " <<
 					std::filesystem::absolute(std::filesystem::path(path)).string() << "\n" <<
 					" expecting " << N << " channels but received " << n << std::endl;
-				//return;
+				return false;
 			}
 
 			if (data_ptr) {
 				_path = path;
 				resize(w, h);
 				std::memcpy(_pixels.data(), data_ptr, _pixels.size() * sizeof(T));
-				stbiImageFree(data_ptr);
+				stb::stbiImageFree(data_ptr);
 				std::cout << path << " : " << _w << " x " << _h << " x " << N << std::endl;
+				return true;
 			} else {
 				std::cout << " cant load " << path << std::endl;
 			}
+			return false;
+		}
+
+		bool save(const std::string& path) {
+			std::string extension = std::filesystem::path(path).extension().string();
+			
+			if (extension == ".png") {
+				stb::stbiImageWritePNG(path, w(), h(), N, data(), w() * sizeof(T) * N);
+				return true;
+			} else if (extension == ".jpg") {
+				stb::stbiImageWriteJPG(path, w(), h(), N, data(), 100);
+				return true;
+			} 
+
+			addToLogs(LogType::ERROR, "cant save " + path + ", format not supported");
+			return false;
 		}
 
 		const uchar* data() const
@@ -206,6 +233,16 @@ namespace gloops {
 					}
 				}
 
+			}
+			return out;
+		}
+
+		Image flip() const {
+			Image out(w(), h());
+			for (int i = 0; i < h(); ++i) {
+				for (int j = 0; j < w(); ++j) {
+					out.pixel(j, i) = pixel(j, h() - 1 - i);
+				}
 			}
 			return out;
 		}

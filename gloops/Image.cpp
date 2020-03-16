@@ -1,19 +1,38 @@
 #include "Image.hpp"
+#include "Utils.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
 namespace gloops {
 
-	uchar* stbiImageLoad(const std::string& path, int& w, int& h, int& n)
-	{
-		return stbi_load(path.c_str(), &w, &h, &n, 0);
+	namespace stb {
+		
+		uchar* stbiImageLoad(const std::string& path, int& w, int& h, int& n)
+		{
+			return stbi_load(path.c_str(), &w, &h, &n, 0);
+		}
+
+		void stbiImageFree(uchar* ptr)
+		{
+			stbi_image_free(ptr);
+		}
+
+		void stbiImageWritePNG(const std::string& path, int x, int y, int comp, const void* data, int stride_bytes)
+		{
+			stbi_write_png(path.c_str(), x, y, comp, data, stride_bytes);
+		}
+
+		void stbiImageWriteJPG(const std::string& path, int w, int h, int comp, const void* data, int quality)
+		{
+			stbi_write_jpg(path.c_str(), w, h, comp, data, quality);
+		}
+
 	}
 
-	void stbiImageFree(uchar* ptr)
-	{
-		stbi_image_free(ptr);
-	}
 
 	Image3b checkersTexture(int w, int h, int size)
 	{

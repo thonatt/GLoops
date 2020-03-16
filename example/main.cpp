@@ -3,6 +3,7 @@
 #include <gloops/Camera.hpp>
 #include <gloops/Shader.hpp>
 #include <gloops/Texture.hpp>
+#include <gloops/Utils.hpp>
 
 #include <map>
 #include <limits>
@@ -791,7 +792,7 @@ SubWindow raymarching_win()
 	static ShaderProgram shaderRaymarching, shaderSlice, shaderSDF;
 	static Uniform<v3f> eye_pos = { "eye_pos" }, bmax = { "bmax", 0.5*v3f(1,1,1) }, bmin = { "bmin", 0.5*v3f(-1,-1,-1) };
 	static Uniform<v3i> gridSize = { "gridSize", 256 * v3i(1,1,1) };
-	static Uniform<float> intensity = { "intensity" , 3.0f }, sdf_offset = { "sdf_offset", 0.0f };
+	static Uniform<float> intensity = { "intensity" , 3.0f }, sdf_offset = { "sdf_offset", 0.5f };
 	
 	shaderRaymarching.init(
 		gloops::ShaderCollection::vertexMeshInterface(), 
@@ -821,7 +822,7 @@ SubWindow raymarching_win()
 	for (int i = 0; i < d; ++i) {
 		for (int j = 0; j < h; ++j) {
 			for (int k = 0; k < w; ++k) {
-				float x = 1.0f + 1.0f*(randomVec<float, 1>().x());
+				float x = 1.0f + 0.75f * (randomVec<float, 1>().x());
 				float di = i - d / 2.0f, dj = j - h / 2.0f, dk = k - w / 2.0f;
 				float diff = exp(-(di * di + dj * dj + dk * dk)/(2*a));
 				voxelData[k + w * (j + h * i)] = saturate_cast<uchar>(255.0f * diff * x);
@@ -855,7 +856,7 @@ SubWindow raymarching_win()
 			ImGui::SliderFloat("slice range", &slice_range, -.5f, .5f);
 		}
 		if (mode == Mode::ISOSURFACE) {
-			ImGui::SliderFloat("isosurface value", &sdf_offset.get(), 0, 1);
+			ImGui::SliderFloat("isosurface value", &sdf_offset.get(), 0.01f, 0.99f);
 		}	
 	});
 
@@ -907,6 +908,9 @@ int main(int argc, char** argv)
 
 	auto demoOptions = WindowComponent("Demo settings", WindowComponent::Type::FLOATING,
 		[&](const Window& win) {
+		std::stringstream s;
+		s << std::round(ImGui::GetIO().Framerate) << " fps";
+		ImGui::Text(s);
 		ImGui::Checkbox("Texture viewer", &win_textures.active());
 		ImGui::SameLine();
 		ImGui::Checkbox("Ray marching", &win_raymarch.active());

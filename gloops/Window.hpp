@@ -46,7 +46,7 @@ namespace gloops {
 
 		using Func = std::function<void(const Window&)>;
 
-		WindowComponent(const std::string& name = "", Type type = Type::RENDERING, const Func& guiFunc = {}, const v2f& weights = v2f(1, 1));
+		WindowComponent(const std::string& name = "", Type type = Type::RENDERING, const Func& guiFunc = {});
 
 		void show(const Window& win);
 		bool& isActive();
@@ -59,8 +59,6 @@ namespace gloops {
 
 		v4f backgroundColor = { 0,0,0,1 };
 
-		const v2f& weights() const;
-
 	protected:
 
 		static size_t counter;
@@ -68,7 +66,6 @@ namespace gloops {
 		std::string _name;
 		Func _guiFunc;
 		Type _type = Type::RENDERING;
-		v2f _weights = v2f(1, 1);
 		size_t id = 0;
 		bool _active = true, shouldResize = false, inFocus = false;
 	};
@@ -123,10 +120,7 @@ namespace gloops {
 
 		void setupWinViewport();
 
-		void automatic_subwins_layout();
-
-		static void glErrorCallBack(GLenum source, GLenum type, GLuint id, GLenum severity, 
-			GLsizei length, const GLchar* message, const void* userParam);
+		void automaticSubwinsLayout();
 
 		std::shared_ptr<GLFWwindow> window;
 		WindowComponent debugComponent;
