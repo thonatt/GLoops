@@ -1,9 +1,6 @@
 [submodule "extlibs/embree"]
 	path = extlibs/embree
 	url = https://github.com/embree/embree.git
-[submodule "extlibs/assimp"]
-	path = extlibs/assimp
-	url = https://github.com/assimp/assimp.git
 [submodule "extlibs/eigen"]
 	path = extlibs/eigen
 	url = https://gitlab.com/libeigen/eigen.git
@@ -16,3 +13,6 @@
 [submodule "extlibs/stb"]
 	path = extlibs/stb
 	url = https://github.com/nothings/stb.git
+[submodule "extlibs/tinyobjloader"]
+	path = extlibs/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader.git
