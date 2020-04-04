@@ -2,9 +2,6 @@
 
 #include "config.hpp"
 
-#include "Camera.hpp"
-#include "Mesh.hpp"
-
 namespace gloops {
 
 	std::string loadFile(const std::string& path);
@@ -23,7 +20,9 @@ namespace gloops {
 		const int numThreads = std::clamp(numCores - 1, 1, std::min(max_num_threads, numJobs));
 		const int numJobsPerThread = numJobs / numThreads + 1;
 
-		std::cout << "parallel for each : " << numCores << " cores availables, " << numJobs << " jobs divided into " << numThreads << " threads" << std::endl;
+		std::stringstream s;
+		s << "parallel for each : " << numCores << " cores availables, " << numJobs << " jobs divided into " << numThreads << " threads" << std::endl;
+		addToLogs(LogType::LOG, s.str());
 
 		std::vector<std::thread> threads(numThreads);
 		for (int t = 0; t < numThreads; ++t) {

@@ -107,7 +107,11 @@ namespace gloops {
 		};
 
 		Raycaster();
+		Raycaster(Raycaster&& other);
+		Raycaster(const Raycaster& other);
+
 		Raycaster& operator=(const Raycaster& other);
+	
 
 		Hit intersect(const Ray& ray, float near = 0.0f, float far = std::numeric_limits<float>::infinity()) const;
 
@@ -138,8 +142,6 @@ namespace gloops {
 		void initRayHitPack(typename RayPack<N>::RayHitType& out, const std::array<Ray, N>& rays, float near, float far) const;
 
 		static void errorCallback(void* userPtr, RTCError code, const char* str);
-
-		//static DevicePtr device;
 
 		static RTCDevice device();
 

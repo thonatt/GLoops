@@ -81,6 +81,13 @@ namespace gloops {
 		return static_cast<uchar>(std::clamp(d, 0.0, 255.0));
 	}
 
+	template<typename T, int N>
+	std::string str(const gloops::Vec<T, N>& v) {
+		std::stringstream s;
+		s << v[0] << " " << v[1] << " " << v[2];
+		return s.str();
+	}
+
 }
 
 namespace ImGui {

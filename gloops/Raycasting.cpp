@@ -77,6 +77,22 @@ namespace gloops {
 		return *this;
 	}
 
+	Raycaster::Raycaster(Raycaster&& other)
+		: scene(other.scene), context(other.context), meshes(other.meshes), sceneReady(other.sceneReady)
+	{
+		for (const auto& mesh : meshes) {
+			setupMeshCallbacks(mesh.second);
+		}
+	}
+
+	Raycaster::Raycaster(const Raycaster& other)
+		: scene(other.scene), context(other.context), meshes(other.meshes), sceneReady(other.sceneReady)
+	{
+		for (const auto& mesh : meshes) {
+			setupMeshCallbacks(mesh.second);
+		}
+	}
+
 	void Raycaster::addMeshInternal(const Mesh& mesh)
 	{
 		ScenePtr localScene = ScenePtr(rtcNewScene(device()), rtcReleaseScene);
@@ -103,22 +119,14 @@ namespace gloops {
 
 	void Raycaster::setupMeshCallbacks(const MeshRaycastingData& data)
 	{
-		data.mesh.addModelCallback([&] {  
-			if (sceneReady) {
-				*data.dirtyModel = true;
-				*sceneReady = false;
-				return true;
-			}
-			return false;
+		data.mesh.addModelCallback("_gloops_mesh_to_raycaster_model_cb", [&] {
+			*data.dirtyModel = true;
+			*sceneReady = false;
 		});
 
-		data.mesh.addGeometryCallback([&] {
-			if (sceneReady) {
-				*data.dirtyGeometry = true;
-				*sceneReady = false;
-				return true;
-			}
-			return false;
+		data.mesh.addGeometryCallback("_gloops_mesh_to_raycaster_geometry_cb", [&] {
+			*data.dirtyModel = true;
+			*sceneReady = false;
 		});
 	}
 
@@ -158,13 +166,13 @@ namespace gloops {
 
 				Triangle* dst_tris = reinterpret_cast<Triangle*>(rtcSetNewGeometryBuffer(
 					m.geometry.get(), RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, sizeof(Triangle), tris.size()));
-				for (uint i = 0; i < tris.size(); ++i, ++dst_tris) {
+				for (size_t i = 0; i < tris.size(); ++i, ++dst_tris) {
 					*dst_tris = tris[i];
 				}
 
 				Vertice* dst_verts = reinterpret_cast<Vertice*>(rtcSetNewGeometryBuffer(
 					m.geometry.get(), RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(Vertice), verts.size()));
-				for (uint i = 0; i < verts.size(); ++i, ++dst_verts) {
+				for (size_t i = 0; i < verts.size(); ++i, ++dst_verts) {
 					*dst_verts = verts[i];
 				}
 				rtcCommitGeometry(m.geometry.get());

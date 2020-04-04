@@ -4,6 +4,7 @@
 #include "Input.hpp"
 #include "Mesh.hpp"
 #include "Raycasting.hpp"
+#include "Utils.hpp"
 
 namespace gloops {
 
@@ -40,11 +41,7 @@ namespace gloops {
 			const v3 y = z.cross(x).normalized();
 
 			pos = eye;
-
-			m3 rot;
-			rot << x, y, z;
-			
-			rotation = rot;
+			rotation = (m3() << x, y, z).finished();
 			dirty = true;
 		}
 
@@ -477,6 +474,18 @@ namespace gloops {
 
 		Trackball() = default;
 
+		//Trackball(const Trackball& other)
+		//	: clickedUV(other.clickedUV), currentUV(other.currentUV), status(other.status), _center(other._center), _eye(other._eye), _up(other._up),
+		//	_camera(other._camera), dirty(other.dirty), raycaster(other.raycaster)
+		//{
+		//}
+
+		//Trackball& operator=(const Trackball& other)
+		//{
+		//	std::swap(*this, other);
+		//	return *this;
+		//}
+
 		Trackball(const Cam& cam, T r)
 		{
 			_eye = cam.position();
@@ -736,7 +745,6 @@ namespace gloops {
 				out_up = tmp_up;
 			}
 		}
-
 
 		Raycaster raycaster;
 		v2 clickedUV, currentUV;

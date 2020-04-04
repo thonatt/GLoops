@@ -204,7 +204,7 @@ namespace gloops {
 	public:
 
 		enum class Name {
-			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH, NORMALS, CUBEMAP, UVS
+			BASIC, PHONG, COLORED_MESH, TEXTURED_MESH, NORMALS_GEOMETRIC, NORMALS_VERTICE, CUBEMAP, UVS
 		};
 
 		ShaderCollection();
@@ -220,22 +220,25 @@ namespace gloops {
 		
 		void renderUVs(const Cameraf& eye, const MeshGL& mesh);
 
-		void renderNormals(const Cameraf& eye, const MeshGL& mesh, float size = 1.0f, const v4f& color = { 1,0,1,1 });
+		void renderGeometricNormals(const Cameraf& eye, const MeshGL& mesh, float size = 1.0f, const v4f& color = { 1,0,1,1 });
+		void renderVerticeNormals(const Cameraf& eye, const MeshGL& mesh, float size = 1.0f, const v4f& color = { 1,0,1,1 });
 
 		void renderCubemap(const Cameraf& eye, const v3f& position, float size, const Texture& cubemap);
+
 	public:
 		Uniform<m4f> mvp = { "mvp" }, model = { "model" }, vp = { "vp" };
 		Uniform<v4f> color = { "color" };
 		Uniform<v3f> light_pos = { "light_pos" }, cam_pos = { "cam_pos" };
 		Uniform<v2f> viewport_diagonal = { "viewport_diagonal" };
-		Uniform<float> alpha = { "alpha" }, size = { "size" }, lod = { "lod" }, tesselation_size = { "tesselation_size", 1 };
+		Uniform<float> alpha = { "alpha" }, size = { "size" }, lod = { "lod" }, tesselation_size = { "tesselation_size", 1 },
+			displacement_scaling = { "displacement_scaling", 1.0f };
 
 		std::map<Name, ShaderProgram> shaderPrograms;
 
 	public:
 		static const std::string
 			//& vertexPosition(), & vertexPositionNormalUV(), & vertexMVP(), & vertexMVPPosition(), & vertexMVPColor(), & vertexMVPUV(), & vertexMVPPositionNormal(),			
-			& vertexMeshInterface(), & geomNormalTriangle(), 
+			& vertexMeshInterface(), & geomGeometricNormal(), & geomVertexNormal(),
 			& fragUniformColor(), & fragColor(), & fragPhong(), & fragLodTexUValpha(), & fragCubemap(), &fragUVs(),
 			& tcsTriInTerface(), &tevTriDisplacement();
 
@@ -246,7 +249,8 @@ namespace gloops {
 		void initPhong();
 		void initColoredMesh();
 		void initTexturedMesh();
-		void initNormals();
+		void initGeometricNormals();
+		void initVerticeNormals();
 		void initCubemap();
 		void initUVs();
 	};

@@ -211,6 +211,8 @@ namespace gloops {
 
 	void Window::renderingLoop(const std::function<void()>& renderingFunc)
 	{
+		std::cout << " starting main loop " << std::endl;
+
 		bool pause = false, pauseNext = false;
 		bool showImGuiDemo = false, showDebug = false, showLogs = false;
 
@@ -477,74 +479,30 @@ namespace gloops {
 
 		_viewport = Viewportd(v2d(0, ImGui::TitleHeight()), v2d(render_size[0], render_size[1] + ImGui::TitleHeight()));
 
+		setupComponents();
+	}
 
-		//std::cout << name << " ctor : rcom " << &renderComponent << std::endl;
+	SubWindow& SubWindow::operator=(const SubWindow& other)
+	{
+		win_name = other.win_name;
+		gui_render_size = other.gui_render_size;
+		guiFunc = other.guiFunc;
+		updateFunc = other.updateFunc;
+		renderingFunc = other.renderingFunc;
 
-		renderComponent = std::make_shared<WindowComponent>(name + "##render", WindowComponent::Type::RENDERING, [&](const Window& win) {
+		setupComponents();
 
-			shouldUpdate = false;
+		return *this;
+	}
 
-			menuBar();
+	SubWindow::SubWindow(SubWindow&& other)
+		: SubWindow(other.win_name, other.gui_render_size. template cast<int>(), other.guiFunc, other.updateFunc, other.renderingFunc)
+	{
+	}
 
-			//std::cout << win_name << " rcom " << &renderComponent << std::endl;
-
-			v2d offset, size;
-
-			//std::cout << "vp diag / rcomp diag  : " << viewport().diagonal().transpose() << " " << renderComponent.diagonal().transpose() << std::endl;
-			
-			fitContent(offset, size, viewport().diagonal().cwiseMax(v2d(1, 1)), renderComponent->diagonal());
-			
-			//std::cout << "offset / size : " << offset.transpose() << " " << size.transpose() << std::endl;
-
-			if (offset.hasNaN() || size.hasNaN()) {
-				std::cout << "offset size " << offset.transpose() << " " << size.transpose() << std::endl;
-			}
-
-			v2d screenTopLeft = renderComponent->min() + offset;
-			v2d screenBottomRight = screenTopLeft + size;
-
-			debugWin();
-
-			_viewport = Viewportd(screenTopLeft, screenBottomRight);
-
-			//viewport().checkNan();
-
-			Input& subInput = static_cast<Input&>(*this);
-			subInput = win.subInput(viewport(), !renderComponent->isInFocus());
-
-			shouldUpdate |= renderComponent->isInFocus();
-			shouldUpdate |= updateWhenNoFocus;
-
-			if (showGui) {
-				guiComponent->show(win);
-			}
-
-			if (shouldUpdate && updateFunc) {
-				updateFunc(subInput);
-			}
-
-			framebuffer.clear(clearColor, (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
-
-			if (renderingFunc) {
-				renderingFunc(framebuffer);
-			}
-
-			ImGui::SetCursorPos({ (float)offset[0], (float)offset[1] });
-
-			ImGui::InvisibleButton((win_name + "_dummy").c_str(), { (float)size[0], (float)size[1] });
-			ImGui::GetWindowDrawList()->AddImage(
-				framebuffer.getAttachment().getId(),
-				{ (float)screenTopLeft[0], (float)screenBottomRight[1] },
-				{ (float)screenBottomRight[0], (float)screenTopLeft[1] }
-			);
-		});
-
-		guiComponent = std::make_shared<WindowComponent>(name + " gui", WindowComponent::Type::GUI, [&](const Window& win) {
-			shouldUpdate |= ImGui::IsWindowFocused();	
-			if (guiFunc) {
-				guiFunc();
-			}			
-		});
+	SubWindow::SubWindow(const SubWindow& other)
+		: SubWindow(other.win_name, other.gui_render_size. template cast<int>(), other.guiFunc, other.updateFunc, other.renderingFunc)
+	{
 	}
 
 	void SubWindow::setGuiFunction(const GuiFunc& guiFunction)
@@ -672,6 +630,75 @@ namespace gloops {
 			}
 			ImGui::End();
 		}
+	}
+
+	void SubWindow::setupComponents()
+	{
+		renderComponent = std::make_shared<WindowComponent>(win_name + "##render", WindowComponent::Type::RENDERING, [&](const Window& win) {
+
+			shouldUpdate = false;
+
+			menuBar();
+
+			//std::cout << win_name << " rcom " << &renderComponent << std::endl;
+
+			v2d offset, size;
+
+			//std::cout << "vp diag / rcomp diag  : " << viewport().diagonal().transpose() << " " << renderComponent.diagonal().transpose() << std::endl;
+
+			fitContent(offset, size, viewport().diagonal().cwiseMax(v2d(1, 1)), renderComponent->diagonal());
+
+			//std::cout << "offset / size : " << offset.transpose() << " " << size.transpose() << std::endl;
+
+			if (offset.hasNaN() || size.hasNaN()) {
+				std::cout << "offset size " << offset.transpose() << " " << size.transpose() << std::endl;
+			}
+
+			v2d screenTopLeft = renderComponent->min() + offset;
+			v2d screenBottomRight = screenTopLeft + size;
+
+			debugWin();
+
+			_viewport = Viewportd(screenTopLeft, screenBottomRight);
+
+			//viewport().checkNan();
+
+			Input& subInput = static_cast<Input&>(*this);
+			subInput = win.subInput(viewport(), !renderComponent->isInFocus());
+
+			shouldUpdate |= renderComponent->isInFocus();
+			shouldUpdate |= updateWhenNoFocus;
+
+			if (showGui) {
+				guiComponent->show(win);
+			}
+
+			if (shouldUpdate && updateFunc) {
+				updateFunc(subInput);
+			}
+
+			framebuffer.clear(clearColor, (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+
+			if (renderingFunc) {
+				renderingFunc(framebuffer);
+			}
+
+			ImGui::SetCursorPos({ (float)offset[0], (float)offset[1] });
+
+			ImGui::InvisibleButton((win_name + "_dummy").c_str(), { (float)size[0], (float)size[1] });
+			ImGui::GetWindowDrawList()->AddImage(
+				framebuffer.getAttachment().getId(),
+				{ (float)screenTopLeft[0], (float)screenBottomRight[1] },
+				{ (float)screenBottomRight[0], (float)screenTopLeft[1] }
+			);
+		});
+
+		guiComponent = std::make_shared<WindowComponent>(win_name + " gui", WindowComponent::Type::GUI, [&](const Window& win) {
+			shouldUpdate |= ImGui::IsWindowFocused();
+			if (guiFunc) {
+				guiFunc();
+			}
+		});
 	}
 
 }

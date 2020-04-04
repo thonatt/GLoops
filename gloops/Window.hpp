@@ -148,8 +148,11 @@ namespace gloops {
 			const RenderingFunc& renderFunc = {}
 		);
 
-		SubWindow operator=(const SubWindow&) = delete;
-
+		SubWindow(SubWindow&& other);
+		SubWindow(const SubWindow& other);
+		SubWindow& operator=(const SubWindow& other);
+		
+			
 		void setGuiFunction(const GuiFunc& guiFunction);
 		void setUpdateFunction(const UpdateFunc& upFunc);
 		void setRenderingFunction(const RenderingFunc& renderFunc);
@@ -172,6 +175,8 @@ namespace gloops {
 		std::string gui_text(const std::string& str) const;
 		void menuBar();
 		void debugWin();
+
+		void setupComponents();
 
 		Framebuffer framebuffer;
 		

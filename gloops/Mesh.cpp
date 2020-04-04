@@ -4,10 +4,14 @@
 
 #include <cstring>
 #include <cmath>
+#include <queue>
 
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+
+//#include <assimp/Importer.hpp>
+//#include <assimp/scene.h>
+//#include <assimp/postprocess.h>
 
 namespace gloops {
 
@@ -92,8 +96,8 @@ namespace gloops {
 		uvs = std::make_shared<UVs>();
 
 		_transform = std::make_shared<Transform4>();
-		modelCallbacks = std::make_shared<std::list<CB>>();
-		geometryCallbacks = std::make_shared<std::list<CB>>();
+		modelCallbacks = std::make_shared<Callbacks>();
+		geometryCallbacks = std::make_shared<Callbacks>();
 	}
 
 	const Mesh::Vertices& Mesh::getVertices() const
@@ -249,12 +253,24 @@ namespace gloops {
 	//	}
 	//}
 
-	bool MeshGL::load(const std::string& path)
+	//bool MeshGL::load(const std::string& path)
+	//{
+	//	bool out = Mesh::load(path);
+	//	if (out) {
+	//		setVertices(getVertices());
+	//	}
+	//	return out;
+	//}
+
+	std::vector<MeshGL> MeshGL::loadMeshes(const std::string& path)
 	{
-		bool out = Mesh::load(path);
-		if (out) {
-			setVertices(getVertices());
+		std::vector<Mesh> meshes = Mesh::loadMeshes(path);
+
+		std::vector<MeshGL> out;
+		for (const auto& mesh : meshes) {
+			out.push_back(MeshGL(mesh));
 		}
+
 		return out;
 	}
 
@@ -366,91 +382,297 @@ namespace gloops {
 		dirtyLocations = false;
 	}
 
-	bool Mesh::load(const std::string& path)
+	std::vector<Mesh> Mesh::loadMeshes(const std::string& path)
 	{
-		using namespace Assimp;
-		Importer importer;
+		auto assign3f = [](float& dst, const float& src) {
+			std::memcpy(&dst, &src, 3 * sizeof(float));
+		};
 
-		const aiScene* scene;
+		auto assign2f = [](float& dst, const float& src) {
+			std::memcpy(&dst, &src, 2 * sizeof(float));
+		};
 
-		try {
-			scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
+		struct IndexSort {
+			bool operator()(const tinyobj::index_t& a, const tinyobj::index_t& b) const {
+				return a.vertex_index < b.vertex_index;
+			}
+		};
+
+		tinyobj::ObjReader reader;
+		tinyobj::ObjReaderConfig config;
+		config.triangulate = true;
+		config.vertex_color = false;
+	
+		std::cout << "loading " << path << std::flush;
+		if (!reader.ParseFromFile(path, config)) {
+			addToLogs(LogType::ERROR, reader.Error());
 		}
-		catch (const std::exception & e) {
-			std::cout << e.what() << std::endl;
-			return false;
+		if (!reader.Warning().empty()) {
+			addToLogs(LogType::WARNING, reader.Warning());
 		}
 
-		if (!scene) {
-			std::cout << " cant load " << path << std::endl;
-			return false;
-		}
-		if (!scene->mNumMeshes) {
-			std::cout << " no meshes at " << path << std::endl;
-			return false;
-		}
+		std::vector<Mesh> out;
+		
+		const auto& attributes = reader.GetAttrib();
+		const auto& shapes = reader.GetShapes();
 
-		auto vConverter = [](const aiVector3D& v) { return v3f(v.x, v.y, v.z); };
-		auto tConverter = [](const aiFace& f) { return v3u(f.mIndices[0], f.mIndices[1], f.mIndices[2]); };
-		auto uvConverter = [](const aiVector3D& v) { return v2f(v.x, v.y); };
+		const bool hasColor = !attributes.colors.empty(),
+			hasNormals = !attributes.normals.empty(),
+			hasTexCoords = !attributes.texcoords.empty();
 
-		size_t num_vertices = 0, num_triangles = 0;
+		for (const auto& shape : shapes) {
+			
+			Mesh mesh;
 
-		//std::cout << scene->mNumMeshes << " meshes" << std::endl;
-		for (size_t m_id = 0; m_id < scene->mNumMeshes; ++m_id) {
-			num_vertices += scene->mMeshes[m_id]->mNumVertices;
-			num_triangles += scene->mMeshes[m_id]->mNumFaces;
-		}
-		//std::cout << num_vertices << " verts, " << num_triangles << " tris loaded" << std::endl;
+			const size_t numIndices = shape.mesh.indices.size();
 
-		auto& vs = *vertices;
-		auto& ts = *triangles;
-		auto& tcs = *uvs;
+			std::map<tinyobj::index_t, int, IndexSort> tinyobj_to_unique = {};
 
-		vs.resize(num_vertices);
-		ts.resize(num_triangles);
-		tcs.resize(0);
+			Mesh::Triangles triangles(numIndices / 3);
+			for (size_t i = 0; i < numIndices; ++i) {
+				
+				const tinyobj::index_t& v_index = shape.mesh.indices[i];
 
-		size_t offset_t = 0, offset_v = 0;
-		for (size_t m_id = 0; m_id < scene->mNumMeshes; ++m_id) {
+				if (tinyobj_to_unique.find(v_index) == tinyobj_to_unique.end()) {
+					tinyobj_to_unique[v_index] = (int)tinyobj_to_unique.size();
+				}
 
-			const aiMesh& mesh = *scene->mMeshes[m_id];
+				triangles[i / 3][i % 3] = tinyobj_to_unique[v_index];
 
-			const bool hasTexCoords = mesh.GetNumUVChannels() > 0;
+			}
+			mesh.setTriangles(triangles);
+		
+			const size_t numVertices = tinyobj_to_unique.size();
 
-			if (hasTexCoords) {
-				tcs.resize(tcs.size() + mesh.mNumVertices);
+			std::cout << ", " << numVertices << " vertices " << std::flush;
+
+			std::vector<v3f> vertices(numVertices);
+			for (const auto& indice : tinyobj_to_unique) {
+				assign3f(vertices[indice.second][0], attributes.vertices[3*indice.first.vertex_index]);
+			}
+			mesh.setVertices(vertices);
+
+			if (hasColor) {
+				std::cout << ", colors" << std::flush;
+				std::vector<v3f> colors(numVertices);
+				for (const auto& indice : tinyobj_to_unique) {
+					assign3f(colors[indice.second][0], attributes.colors[3*indice.first.vertex_index]);
+				}
+				mesh.setColors(colors);
 			}
 
-			for (size_t v_id = 0; v_id < mesh.mNumVertices; ++v_id) {
-				size_t global_v_id = offset_v + v_id;
-				vs[global_v_id] = vConverter(mesh.mVertices[v_id]);
-
-				if (hasTexCoords) {
-					tcs[global_v_id] = uvConverter(mesh.mTextureCoords[0][v_id]);
+			if (hasNormals) {
+				std::cout << ", normals" << std::flush;
+				std::vector<v3f> normals(numVertices);
+				for (const auto& indice : tinyobj_to_unique) {
+					assign3f(normals[indice.second][0], attributes.normals[3 * indice.first.normal_index]);
 				}
 			
+				mesh.setNormals(normals);
 			}
 
-			offset_v += mesh.mNumVertices;
-
-			const uint offset_tu = static_cast<uint>(offset_t);
-			const v3u offset_t3 =  v3u(offset_tu, offset_tu, offset_tu);
-
-			for (size_t t_id = 0; t_id < mesh.mNumFaces; ++t_id) {
-				if (mesh.mFaces[t_id].mNumIndices != 3) {
-					std::cout << "wrong num indices : " << t_id << std::endl;
+			if (hasTexCoords) {
+				std::cout << ", texCoords" << std::flush;
+				std::vector<v2f> texCoords(numVertices);
+				for (const auto& indice : tinyobj_to_unique) {
+					assign2f(texCoords[indice.second][0], attributes.texcoords[2*indice.first.texcoord_index]);
 				}
-				ts[offset_t + t_id] = offset_t3 + tConverter(mesh.mFaces[t_id]);
-				//std::cout << triangles[offset_t + t_id].transpose() << "\n";
+				mesh.setUVs(texCoords);
 			}
-			offset_t += mesh.mNumFaces;
+
+			std::cout << std::endl;
+
+			out.push_back(std::move(mesh));
 		}
 
-		std::cout << path << " : " << ts.size() << " tris, " << vs.size() << " verts loaded" << std::endl;
-
-		return true;
+		return out;
 	}
+
+	std::vector<Mesh> Mesh::extractComponents() const
+	{
+		std::vector<Mesh> out;
+
+		if (getTriangles().empty() || getVertices().empty()) {
+			return out;
+		}
+
+		std::map<size_t, std::vector<size_t>> triangles_map;
+
+		for (size_t t_id = 0; t_id < getTriangles().size(); ++t_id) {
+			for (int i = 0; i < 3; ++i) {
+				triangles_map[getTriangles()[t_id][i]].push_back(t_id);
+			}
+		}
+
+		std::vector<int> v_visited(getVertices().size(), false), t_visited(getTriangles().size(), false);
+		std::queue<size_t> queue;
+		for (size_t v_id = 0; v_id < getVertices().size(); ++v_id) {
+			if (v_visited[v_id]) {
+				continue;
+			}
+			queue.push(v_id);
+			v_visited[v_id] = true;
+
+			std::vector<size_t> currentVertices, currentTriangles;
+
+			while (!queue.empty()) {
+				const size_t current_v_id = queue.front();
+				queue.pop();	
+				currentVertices.push_back(current_v_id);
+
+				for (const auto& tri_id : triangles_map[current_v_id]) {
+					if (!t_visited[tri_id]) {
+						currentTriangles.push_back(tri_id);
+						t_visited[tri_id] = true;
+					}
+
+					for (int i = 0; i < 3; ++i) {
+						const size_t next_v_id = getTriangles()[tri_id][i];
+						if (!v_visited[next_v_id]) {
+							queue.push(next_v_id);
+							v_visited[next_v_id] = true;
+						}
+					}
+				}
+			}
+
+			Mesh mesh;
+
+			std::vector<size_t> vs_mapping(getVertices().size());
+
+			Vertices vs(currentVertices.size());
+			for (size_t new_v_id = 0; new_v_id < currentVertices.size(); ++new_v_id) {
+				vs[new_v_id] = getVertices()[currentVertices[new_v_id]];
+				vs_mapping[currentVertices[new_v_id]] = new_v_id;
+			}
+			mesh.setVertices(vs);
+
+			Triangles ts(currentTriangles.size());
+			for (size_t new_t_id = 0; new_t_id < currentTriangles.size(); ++new_t_id) {
+				const auto& prev_triangle = getTriangles()[currentTriangles[new_t_id]];
+				for (int i = 0; i < 3; ++i) {
+					ts[new_t_id][i] = (GLuint)vs_mapping[prev_triangle[i]];
+				}
+			}
+			mesh.setTriangles(ts);
+			
+			mesh.setTransform(transform());
+
+			if (!getNormals().empty()) {
+				Normals ns(currentVertices.size());
+				for (size_t new_v_id = 0; new_v_id < currentVertices.size(); ++new_v_id) {
+					ns[new_v_id] = getNormals()[currentVertices[new_v_id]];
+				}
+				mesh.setNormals(ns);
+			}
+
+			if (!getUVs().empty()) {
+				UVs uvs(currentVertices.size());
+				for (size_t new_v_id = 0; new_v_id < currentVertices.size(); ++new_v_id) {
+					uvs[new_v_id] = getUVs()[currentVertices[new_v_id]];
+				}
+				mesh.setUVs(uvs);
+			}
+
+			if (!getColors().empty()) {
+				Colors cs(currentVertices.size());
+				for (size_t new_v_id = 0; new_v_id < currentVertices.size(); ++new_v_id) {
+					cs[new_v_id] = getColors()[currentVertices[new_v_id]];
+				}
+				mesh.setColors(cs);
+			}
+
+			out.push_back(mesh);
+		}
+
+		return out;
+	}
+
+	//bool Mesh::load(const std::string& path)
+	//{
+	//	using namespace Assimp;
+	//	Importer importer;
+
+	//	const aiScene* scene;
+
+	//	try {
+	//		scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
+	//	}
+	//	catch (const std::exception & e) {
+	//		std::cout << e.what() << std::endl;
+	//		return false;
+	//	}
+
+	//	if (!scene) {
+	//		std::cout << " cant load " << path << std::endl;
+	//		return false;
+	//	}
+	//	if (!scene->mNumMeshes) {
+	//		std::cout << " no meshes at " << path << std::endl;
+	//		return false;
+	//	}
+
+	//	auto vConverter = [](const aiVector3D& v) { return v3f(v.x, v.y, v.z); };
+	//	auto tConverter = [](const aiFace& f) { return v3u(f.mIndices[0], f.mIndices[1], f.mIndices[2]); };
+	//	auto uvConverter = [](const aiVector3D& v) { return v2f(v.x, v.y); };
+
+	//	size_t num_vertices = 0, num_triangles = 0;
+
+	//	//std::cout << scene->mNumMeshes << " meshes" << std::endl;
+	//	for (size_t m_id = 0; m_id < scene->mNumMeshes; ++m_id) {
+	//		num_vertices += scene->mMeshes[m_id]->mNumVertices;
+	//		num_triangles += scene->mMeshes[m_id]->mNumFaces;
+	//	}
+	//	//std::cout << num_vertices << " verts, " << num_triangles << " tris loaded" << std::endl;
+
+	//	auto& vs = *vertices;
+	//	auto& ts = *triangles;
+	//	auto& tcs = *uvs;
+
+	//	vs.resize(num_vertices);
+	//	ts.resize(num_triangles);
+	//	tcs.resize(0);
+
+	//	size_t offset_t = 0, offset_v = 0;
+	//	for (size_t m_id = 0; m_id < scene->mNumMeshes; ++m_id) {
+
+	//		const aiMesh& mesh = *scene->mMeshes[m_id];
+
+	//		const bool hasTexCoords = mesh.GetNumUVChannels() > 0;
+
+	//		if (hasTexCoords) {
+	//			tcs.resize(tcs.size() + mesh.mNumVertices);
+	//		}
+
+	//		for (size_t v_id = 0; v_id < mesh.mNumVertices; ++v_id) {
+	//			size_t global_v_id = offset_v + v_id;
+	//			vs[global_v_id] = vConverter(mesh.mVertices[v_id]);
+
+	//			if (hasTexCoords) {
+	//				tcs[global_v_id] = uvConverter(mesh.mTextureCoords[0][v_id]);
+	//			}
+	//		
+	//		}
+
+	//		offset_v += mesh.mNumVertices;
+
+	//		const uint offset_tu = static_cast<uint>(offset_t);
+	//		const v3u offset_t3 =  v3u(offset_tu, offset_tu, offset_tu);
+
+	//		for (size_t t_id = 0; t_id < mesh.mNumFaces; ++t_id) {
+	//			if (mesh.mFaces[t_id].mNumIndices != 3) {
+	//				std::cout << "wrong num indices : " << t_id << std::endl;
+	//			}
+	//			ts[offset_t + t_id] = offset_t3 + tConverter(mesh.mFaces[t_id]);
+	//			//std::cout << triangles[offset_t + t_id].transpose() << "\n";
+	//		}
+	//		offset_t += mesh.mNumFaces;
+	//	}
+
+	//	std::cout << path << " : " << ts.size() << " tris, " << vs.size() << " verts loaded" << std::endl;
+
+	//	return true;
+	//}
 
 	void Mesh::computeVertexNormalsFromVertices()
 	{
@@ -548,6 +770,13 @@ namespace gloops {
 	Mesh& Mesh::setScaling(float s)
 	{
 		return setScaling(v3f(s, s, s));
+	}
+
+	Mesh& Mesh::setTransform(const Transform4& t)
+	{
+		*_transform = t;
+		invalidateModel();
+		return *this;
 	}
 
 	size_t MeshGL::size_of_vertex_data() const
@@ -699,20 +928,16 @@ namespace gloops {
 	void Mesh::invalidateModel()
 	{
 		dirtyBox = true;
-		for (auto callback_it = modelCallbacks->begin(); callback_it != modelCallbacks->end(); ++callback_it) {
-			if(!(*callback_it)()){
-				modelCallbacks->erase(callback_it);
-			}
+		for (const auto& callback : *modelCallbacks) {
+			callback.second();
 		}
 	}
 
 	void Mesh::invalidateGeometry()
 	{
 		dirtyBox = true;
-		for (auto callback_it = geometryCallbacks->begin(); callback_it != geometryCallbacks->end(); ++callback_it) {
-			if (!(*callback_it)()) {
-				geometryCallbacks->erase(callback_it);
-			}
+		for (const auto& callback : *geometryCallbacks) {
+			callback.second();
 		}
 	}
 

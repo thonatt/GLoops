@@ -223,7 +223,8 @@ namespace gloops {
 		initPhong();
 		initColoredMesh();
 		initTexturedMesh();
-		initNormals();
+		initGeometricNormals();
+		initVerticeNormals();
 		initCubemap();
 		initUVs();
 	}
@@ -290,12 +291,21 @@ namespace gloops {
 		mesh.draw();
 	}
 
-	void ShaderCollection::renderNormals(const Cameraf& eye, const MeshGL& mesh, float _size, const v4f& _color)
+	void ShaderCollection::renderGeometricNormals(const Cameraf& eye, const MeshGL& mesh, float _size, const v4f& _color)
 	{
 		setMVP(eye, mesh);
 		size = _size;
 		color = _color;
-		shaderPrograms.at(Name::NORMALS).use();
+		shaderPrograms.at(Name::NORMALS_GEOMETRIC).use();
+		mesh.draw();
+	}
+
+	void ShaderCollection::renderVerticeNormals(const Cameraf& eye, const MeshGL& mesh, float _size, const v4f& _color)
+	{
+		setMVP(eye, mesh);
+		size = _size;
+		color = _color;
+		shaderPrograms.at(Name::NORMALS_VERTICE).use();
 		mesh.draw();
 	}
 
@@ -351,7 +361,8 @@ namespace gloops {
 				layout(binding = 6) uniform sampler2D displacementTex;
 				
 				uniform mat4 vp, model;
-				
+				uniform float displacement_scaling = 1.0;
+
 				in VertexData {
 					vec3 position, normal, color;
 					vec2 uv;
@@ -370,7 +381,7 @@ namespace gloops {
 					vec3 pos = gl_TessCoord[0]*tev_in[0].position + gl_TessCoord[1]*tev_in[1].position + gl_TessCoord[2]*tev_in[2].position;
 					float displacement = texture(displacementTex, tev_out.uv).x;
 					vec4 delta_pos = model * vec4(displacement*tev_out.normal, 0.0);
-					tev_out.position = pos + delta_pos.xyz;
+					tev_out.position = pos + displacement_scaling*delta_pos.xyz;
 					gl_Position = vp * vec4(tev_out.position , 1.0);
 				}
 			)";
@@ -471,7 +482,7 @@ namespace gloops {
 		return s;
 	}
 
-	const std::string& ShaderCollection::geomNormalTriangle()
+	const std::string& ShaderCollection::geomGeometricNormal()
 	{
 		static const std::string s = R"(
 				#version 420
@@ -499,6 +510,34 @@ namespace gloops {
 					gl_Position = vp*vec4(tri_center + size*tri_normal, 1.0);
 					EmitVertex();
 					EndPrimitive();
+				}
+			)";
+		return s;
+	}
+
+	const std::string& ShaderCollection::geomVertexNormal()
+	{
+		static const std::string s = R"(
+				#version 420
+				layout(triangles) in;
+				layout(line_strip, max_vertices = 2) out;
+		
+				in VertexData {
+					vec3 position, normal, color;
+					vec2 uv;
+				} vs_in[];
+
+				uniform mat4 model, vp;    
+				uniform float size;
+				
+				void main(void) {
+					for(int i=0; i<3; ++i){
+						gl_Position = vp*vec4(vs_in[i].position, 1.0);
+						EmitVertex();
+						gl_Position = vp*vec4(vs_in[i].position + size*normalize(vs_in[i].normal), 1.0);
+						EmitVertex();
+						EndPrimitive();
+					}			
 				}
 			)";
 		return s;
@@ -591,7 +630,7 @@ namespace gloops {
 		ShaderProgram shader;
 		shader.init(vertexMeshInterface(), fragUniformColor());
 		shader.addUniforms(model, vp, color);
-		shaderPrograms[Name::BASIC] = shader;
+		shaderPrograms[Name::BASIC] = std::move(shader);
 	}
 
 	void ShaderCollection::initPhong()
@@ -599,7 +638,7 @@ namespace gloops {
 		ShaderProgram shader;
 		shader.init(vertexMeshInterface(), fragPhong());
 		shader.addUniforms(model, vp, light_pos, cam_pos);
-		shaderPrograms[Name::PHONG] = shader;
+		shaderPrograms[Name::PHONG] = std::move(shader);
 	}
 
 	void ShaderCollection::initColoredMesh()
@@ -607,7 +646,7 @@ namespace gloops {
 		ShaderProgram shader;
 		shader.init(vertexMeshInterface(), fragColor());
 		shader.addUniforms(model, vp);
-		shaderPrograms[Name::COLORED_MESH] = shader;
+		shaderPrograms[Name::COLORED_MESH] = std::move(shader);
 	}
 
 	void ShaderCollection::initTexturedMesh()
@@ -615,15 +654,23 @@ namespace gloops {
 		ShaderProgram shader;
 		shader.init(vertexMeshInterface(), fragLodTexUValpha());
 		shader.addUniforms(model, vp, alpha, lod);
-		shaderPrograms[Name::TEXTURED_MESH] = shader;
+		shaderPrograms[Name::TEXTURED_MESH] = std::move(shader);
 	}
 
-	void ShaderCollection::initNormals()
+	void ShaderCollection::initGeometricNormals()
 	{
 		ShaderProgram shader;
-		shader.init(vertexMeshInterface(), geomNormalTriangle(), fragUniformColor());
+		shader.init(vertexMeshInterface(), geomGeometricNormal(), fragUniformColor());
 		shader.addUniforms(model, vp, color, size);
-		shaderPrograms[Name::NORMALS] = shader;
+		shaderPrograms[Name::NORMALS_GEOMETRIC] = std::move(shader);
+	}
+
+	void ShaderCollection::initVerticeNormals()
+	{
+		ShaderProgram shader;
+		shader.init(vertexMeshInterface(), geomVertexNormal(), fragUniformColor());
+		shader.addUniforms(model, vp, color, size);
+		shaderPrograms[Name::NORMALS_VERTICE] = std::move(shader);
 	}
 
 	void ShaderCollection::initCubemap()
@@ -631,7 +678,7 @@ namespace gloops {
 		ShaderProgram shader;
 		shader.init(vertexMeshInterface(), fragCubemap());
 		shader.addUniforms(model, vp);
-		shaderPrograms[Name::CUBEMAP] = shader;
+		shaderPrograms[Name::CUBEMAP] = std::move(shader);
 	}
 
 	void ShaderCollection::initUVs()
@@ -639,7 +686,7 @@ namespace gloops {
 		ShaderProgram shader;
 		shader.init(vertexMeshInterface(), fragUVs());
 		shader.addUniforms(model, vp);
-		shaderPrograms[Name::UVS] = shader;
+		shaderPrograms[Name::UVS] = std::move(shader);
 	}
 
 }

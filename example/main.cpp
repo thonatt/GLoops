@@ -13,19 +13,22 @@ using namespace gloops;
 
 static Window mainWin = Window("GLoops demos");
 
+static ShaderCollection shaders;
+
 static TexParams texParams = TexParams().enableMipmap().setMagFilter(GL_NEAREST);
 static TexParams cubeParams = TexParams().disableMipmap().setTarget(GL_TEXTURE_CUBE_MAP).setWrapAll(GL_CLAMP_TO_EDGE);
 
 static const std::string gloops_demo_shaders_folder = std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/shaders/";
 static const std::string gloops_demo_textures_folder = std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/textures/";
+static const std::string gloops_demo_meshes_folder = std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/meshes/";
 
 Texture checkers_tex = Texture(checkersTexture(80, 80, 10), texParams), perlinTex, 
 	kittenTex = Texture::fromPath2D(gloops_demo_textures_folder + "kitten.png", texParams),
 	skyCube = Texture::fromPathCube(gloops_demo_textures_folder + "sky.png", cubeParams);
 
-static Texture displacement_tex = Texture(0.2f * perlinNoise(512, 512, 48), TexParams::RED32F);
+static Texture displacement_tex = Texture(0.2f * perlinNoise(512, 512, 16), TexParams::RED32F);
 
-enum class TexMode { CHECKERS, PERLIN, KITTEN };
+enum class TexMode { CHECKERS, PERLIN, KITTEN, DISP };
 struct ModeData {
 	Texture tex;
 	std::string name;
@@ -35,6 +38,7 @@ static std::map<TexMode, ModeData> modes = {
 	{ TexMode::CHECKERS, { checkers_tex, "Checkers" }},
 	{ TexMode::PERLIN, { perlinTex, "Perlin noise" }},
 	{ TexMode::KITTEN, { kittenTex, "Kitten png" }},
+	{ TexMode::DISP, { displacement_tex, "Displacement" }},
 };
 
 static TexMode currentMode = TexMode::KITTEN;
@@ -48,8 +52,6 @@ SubWindow texture_subwin()
 	static bool doReadback = false;
 	static v2d uv;
 	static v4f color; 
-
-	static ShaderCollection shaders;
 
 	static const std::map<GLenum, std::string> wraps = {
 		{ GL_REPEAT, "REPEAT" },
@@ -238,15 +240,16 @@ SubWindow mesh_modes_subwin()
 {
 	static int precision = 25;
 
+	auto apple_banana = Mesh::loadMeshes(gloops_demo_meshes_folder + "AppleBanana.obj").at(0).setScaling(1 / 20.0f).setTranslation(v3f(-10, 5, -5)).extractComponents();
+	
 	static MeshGL meshA = Mesh::getTorus(3, 1, precision),
 		meshB = Mesh::getTorus(3, 1, precision).setTranslation(3 * v3f::UnitY()).setRotation(v3f(0, pi<float>() / 2, 0)),
 		meshC = Mesh::getSphere(precision).setScaling(3).setTranslation(-8 * v3f(0, 1, 0)),
-		meshD = Mesh::getCube().setScaling(2).setTranslation(v3f(-5, -5, 5)).setRotation(v3f(1, 1, 1));
+		meshD = Mesh::getCube().setScaling(2).setTranslation(v3f(-5, -5, 5)).setRotation(v3f(1, 1, 1)),
+		meshE = apple_banana.at(0),
+		meshF = apple_banana.at(1);
 
-	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC, meshD);
-	tb.setRadius(15);
-
-	static ShaderCollection shaders;
+	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC, meshD, meshE, meshF);
 
 	static Shader tcs_displacement = Shader(GL_TESS_CONTROL_SHADER, ShaderCollection::tcsTriInTerface()),
 		tev_displacement = Shader(GL_TESS_EVALUATION_SHADER, ShaderCollection::tevTriDisplacement());
@@ -257,16 +260,19 @@ SubWindow mesh_modes_subwin()
 		MeshGL mesh;
 		v4f color = v4f(1, 0, 0, 1);
 		float tesselationLevel = 2.0f;
-		bool showNormals = false, displacement = false;
+		bool showGeometricNormals = false, showVertexNormals = false, displacement = false;
 	};
 	static bool showAllBB = false;
+	static float displacement_scaling = 5.0f;
 
 	static std::map<int, ModeMesh> meshes =
 	{
 		{ 0, { Mode::UVS, meshA } },
 		{ 1, { Mode::UVS, meshB } },
 		{ 2, { Mode::UVS, meshC } },
-		{ 3, { Mode::PHONG, meshD } }
+		{ 3, { Mode::PHONG, meshD } },
+		{ 4, { Mode::PHONG, meshE } },
+		{ 5, { Mode::PHONG, meshF } }
 	};
 	static int selectedMesh = -1;
 	for (auto& m : meshes) {
@@ -301,13 +307,23 @@ SubWindow mesh_modes_subwin()
 		auto& mesh = meshes.at(selectedMesh);
 		auto& meshGL = mesh.mesh;
 
-		ImGui::Checkbox("Show normals", &mesh.showNormals);
+		ImGui::Text("Normals");
+		ImGui::SameLine();
+		ImGui::Checkbox("Geometric", &mesh.showGeometricNormals);
+		if (!mesh.mesh.getNormals().empty()) {
+			ImGui::SameLine();
+			ImGui::Checkbox("Vertex", &mesh.showVertexNormals);
+		}
 
 		ImGui::SameLine();
-		ImGui::Checkbox("Tesselation & displacement", &mesh.displacement);
+		ImGui::Checkbox("Displacement", &mesh.displacement);
 		if (mesh.displacement) {
 			ImGui::SameLine();
-			ImGui::ItemWithSize(75, [&] { ImGui::SliderFloat("size", &mesh.tesselationLevel, 1, 10);  });
+			ImGui::ItemWithSize(75,  [&] { 
+				ImGui::SliderFloat("Level", &mesh.tesselationLevel, 1, 10);
+				ImGui::SameLine(); 
+				ImGui::SliderFloat("Scale##disp", &displacement_scaling, 1.0f, 25.0f);
+			});
 		}
 		if (mesh.mode == Mode::COLORED || mesh.mode == Mode::POINT || mesh.mode == Mode::LINE) {
 			ImGui::SameLine();
@@ -359,12 +375,46 @@ SubWindow mesh_modes_subwin()
 		});
 
 		if (ImGui::TreeNode("mesh infos")) {
-			std::stringstream h;
-			h << "num vertices : " << meshGL.getVertices().size() << "\n";
-			h << "num triangles : " << meshGL.getTriangles().size() << "\n";
-			ImGui::Text(h);
+			std::stringstream vinfo, tinfo;
+			vinfo << "num vertices : " << meshGL.getVertices().size();
+			if (ImGui::TreeNode(vinfo.str().c_str())) {
+				if (ImGui::TreeNode("positions")) {
+					for (size_t id = 0; id < meshGL.getVertices().size(); ++id) {
+						ImGui::Text(std::to_string(id) + " : " + str(meshGL.getVertices()[id]));
+					}
+					ImGui::TreePop();
+				}
+				if (!mesh.mesh.getNormals().empty() && ImGui::TreeNode("normals")) {
+					for (size_t id = 0; id < meshGL.getNormals().size(); ++id) {
+						ImGui::Text(std::to_string(id) + " : " + str(meshGL.getNormals()[id]));
+					}
+					ImGui::TreePop();
+				}
+				if (!mesh.mesh.getUVs().empty() && ImGui::TreeNode("tex coords")) {
+					for (size_t id = 0; id < meshGL.getUVs().size(); ++id) {
+						ImGui::Text(std::to_string(id) + " : " + str(meshGL.getUVs()[id]));
+					}
+					ImGui::TreePop();
+				}
+				if (!mesh.mesh.getColors().empty() && ImGui::TreeNode("colors")) {
+					for (size_t id = 0; id < meshGL.getColors().size(); ++id) {
+						ImGui::Text(std::to_string(id) + " : " + str(meshGL.getColors()[id]));
+					}
+					ImGui::TreePop();
+				}
+				ImGui::TreePop();
+			}
+
+			tinfo << "num triangles : " << meshGL.getTriangles().size() << "\n";
+			if (ImGui::TreeNode(tinfo.str().c_str())) {
+				for (const auto& t : meshGL.getTriangles()) {
+					ImGui::Text(str(t));
+				}
+				ImGui::TreePop();
+			}
 			ImGui::TreePop();
 		}
+
 		if (ImGui::TreeNode("vertex data attributes")) {
 			std::map<int, std::pair<std::string, VertexAttribute> > attributes_sorted_by_location;
 			for (const auto& attribute : meshGL.getAttributes()) {
@@ -424,11 +474,11 @@ SubWindow mesh_modes_subwin()
 				mesh.primitive = GL_PATCHES;
 				displacement_tex.bindSlot(GL_TEXTURE6);
 				shaders.tesselation_size = m.second.tesselationLevel;
-
+				shaders.displacement_scaling = displacement_scaling / mesh.transform().scaling().norm();
 				for (auto& program : shaders.shaderPrograms) {
 					program.second.setupShader(tcs_displacement);
 					program.second.setupShader(tev_displacement);
-					program.second.addUniforms(shaders.tesselation_size);
+					program.second.addUniforms(shaders.tesselation_size, shaders.displacement_scaling);
 				}	
 			}
 
@@ -460,14 +510,18 @@ SubWindow mesh_modes_subwin()
 			}
 			case Mode::LINE: {
 				mesh.mode = GL_LINE;
-				shaders.renderBasicMesh(eye, mesh, m.second.color);	
+				shaders.renderBasicMesh(eye, mesh, m.second.color);
 				break;
 			}
 			default: {}
 			}
 
-			if (m.second.showNormals) {
-				shaders.renderNormals(eye, mesh, mesh.getBoundingBox().diagonal().norm() / 25);
+			if (m.second.showGeometricNormals) {
+				shaders.renderGeometricNormals(eye, mesh, mesh.getBoundingBox().diagonal().norm() / 25, v4f(1, 0, 1, 1));
+			}
+
+			if (m.second.showVertexNormals) {
+				shaders.renderVerticeNormals(eye, mesh, mesh.getBoundingBox().diagonal().norm() / 25, v4f(1, 1, 0, 1));
 			}
 
 			if (m.second.displacement) {
@@ -476,7 +530,7 @@ SubWindow mesh_modes_subwin()
 				for (auto& program : shaders.shaderPrograms) {
 					program.second.setupShader(ShaderType::TESSELATION_CONTROL, "");
 					program.second.setupShader(ShaderType::TESSELATION_EVALUATION, "");
-					program.second.removeUniforms(shaders.tesselation_size);
+					program.second.removeUniforms(shaders.tesselation_size, shaders.displacement_scaling);
 				}
 			}
 			
@@ -587,7 +641,6 @@ SubWindow rayTracingWin()
 	static v2i clicked;
 	static bool gatherPaths = false, showPaths = false;
 	static std::vector<v3f> paths, colors, normals;
-	static ShaderCollection shaders;
 
 	sub.setUpdateFunction([&](const Input& i) {
 		tb.update(i);
@@ -788,7 +841,6 @@ SubWindow raymarching_win()
 	static MeshGL unitCube = gloops::Mesh::getCube();
 	unitCube.backface_culling = false;
 
-	static ShaderCollection shaders;
 	static ShaderProgram shaderRaymarching, shaderSlice, shaderSDF;
 	static Uniform<v3f> eye_pos = { "eye_pos" }, bmax = { "bmax", 0.5*v3f(1,1,1) }, bmin = { "bmin", 0.5*v3f(-1,-1,-1) };
 	static Uniform<v3i> gridSize = { "gridSize", 256 * v3i(1,1,1) };

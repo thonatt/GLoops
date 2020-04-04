@@ -50,6 +50,8 @@ namespace gloops {
 		using UVs = std::vector<v2f>;
 		using Box = Eigen::AlignedBox<float, 3>;
 
+		using Callback = std::function<void(void)>;
+
 		Mesh();
 
 		const Vertices& getVertices() const;
@@ -68,7 +70,11 @@ namespace gloops {
 
 		Mesh& invertFaces();
 
-		virtual bool load(const std::string& path);
+		static std::vector<Mesh> loadMeshes(const std::string& path);
+		
+		std::vector<Mesh> extractComponents() const;
+
+		//virtual bool load(const std::string& path);
 
 		void computeVertexNormalsFromVertices();
 
@@ -85,6 +91,8 @@ namespace gloops {
 
 		Mesh& setScaling(const v3f& scaling);
 		Mesh& setScaling(float s);
+		
+		Mesh& setTransform(const Transform4& t);
 
 		static Mesh getSphere(uint precision = 50);
 		static Mesh getTorus(float outerRadius, float innerRadius, uint precision = 50);
@@ -97,11 +105,13 @@ namespace gloops {
 		template<typename T>
 		const std::vector<T>& getAttribute(const std::string& name) const;
 
+		//callback will be called whenever model is modified
 		template<typename F>
-		void addModelCallback(F&& f) const;
+		void addModelCallback(const std::string& name, F&& f) const;
 
+		//callback will be called whenever triangles or vertices are modified
 		template<typename F>
-		void addGeometryCallback(F&& f) const;
+		void addGeometryCallback(const std::string& name, F&& f) const;
 
 	protected:
 
@@ -110,9 +120,10 @@ namespace gloops {
 
 		void invalidateModel();
 		void invalidateGeometry();
-		
-		using CB = std::function<bool(void)>;
-		mutable std::shared_ptr<std::list<CB>> modelCallbacks, geometryCallbacks;
+	
+		using Callbacks = std::map<std::string, Callback>;
+
+		mutable std::shared_ptr<Callbacks> modelCallbacks, geometryCallbacks;
 
 		//v3f _translation = { 0,0,0 }, _scaling = { 1,1,1 };
 		//Qf _rotation = Qf::Identity();
@@ -201,7 +212,9 @@ namespace gloops {
 
 		//void modifyAttributeLocation(GLuint currentLocation, GLuint newLocation);
 
-		virtual bool load(const std::string& path) override;
+		static std::vector<MeshGL> loadMeshes(const std::string& path);
+
+		//virtual bool load(const std::string& path) override;
 
 		void computeVertexNormalsFromVertices(GLuint location = NormalDefaultLocation);
 
@@ -248,15 +261,15 @@ namespace gloops {
 	}
 
 	template<typename F>
-	inline void Mesh::addModelCallback(F&& f) const
+	inline void Mesh::addModelCallback(const std::string& name, F&& f) const
 	{
-		modelCallbacks->push_back(std::forward<F>(f));
+		(*modelCallbacks)[name] = std::forward<F>(f);
 	}
 
 	template<typename F>
-	inline void Mesh::addGeometryCallback(F&& f) const
+	inline void Mesh::addGeometryCallback(const std::string& name, F&& f) const
 	{
-		geometryCallbacks->push_back(std::forward<F>(f));
+		(*geometryCallbacks)[name] = std::forward<F>(f);
 	}
 
 	template<typename T>
