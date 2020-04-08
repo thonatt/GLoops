@@ -89,23 +89,6 @@ namespace gloops {
 		using BufferPtr = std::shared_ptr<RTCBufferTy>;
 		using ContextPtr = std::shared_ptr<RTCIntersectContext>;
 
-		struct MeshRaycastingData {
-
-			MeshRaycastingData() = default;
-
-			MeshRaycastingData(Mesh _mesh, GeometryPtr _instance, GeometryPtr _geometry, ScenePtr _scene)
-				: mesh(_mesh), instance(_instance), geometry(_geometry), scene(_scene)
-			{
-				dirtyGeometry = std::make_shared<bool>(true); 
-				dirtyModel = std::make_shared<bool>(true);
-			}
-
-			Mesh mesh;
-			GeometryPtr instance, geometry;
-			ScenePtr scene;
-			std::shared_ptr<bool> dirtyGeometry, dirtyModel;
-		};
-
 		Raycaster();
 		Raycaster(Raycaster&& other);
 		Raycaster(const Raycaster& other);
@@ -134,6 +117,31 @@ namespace gloops {
 		void checkScene() const;
 
 	private:
+		
+		struct MeshRaycastingData {
+			MeshRaycastingData(Mesh _mesh, GeometryPtr _instance, GeometryPtr _geometry, ScenePtr _scene);
+
+			~MeshRaycastingData();
+
+			Mesh mesh;
+			GeometryPtr instance, geometry;
+			ScenePtr scene;
+			size_t geomCallbackId = 0, modelCallbackId = 0;
+			bool dirtyGeometry = true, dirtyModel = true;
+
+		};
+
+		struct Internal {
+			Internal();
+
+			void setupMeshCallbacks(MeshRaycastingData& data);
+
+			ScenePtr scene;
+			ContextPtr context;
+			std::map<size_t, MeshRaycastingData> meshes;
+			bool sceneReady = false;
+		};
+
 		void initRayHit(RTCRayHit& out, const Ray& ray, float near, float far) const;
 
 		void initRay(RTCRay& out, const Ray& ray, float near, float far) const;
@@ -148,14 +156,9 @@ namespace gloops {
 		void addMeshInternal(const Mesh& mesh);
 		void addMesh(){}
 
-		void setupMeshCallbacks(const MeshRaycastingData& data);
-
-		ScenePtr scene;
-		ContextPtr context;
-		std::map<size_t, MeshRaycastingData> meshes;
-
-		std::shared_ptr<bool> sceneReady;
+		std::shared_ptr<Internal> data;
 	};
+
 
 	template<uint N>
 	inline std::array<Hit, N> Hit::fromPack(const typename RayPack<N>::RayHitType& rayHits)
@@ -220,7 +223,7 @@ namespace gloops {
 	inline auto Raycaster::interpolate(const Hit& hit, F&& meshMember, Args&& ... args) const
 	{
 		const v3f& uvs = hit.getCoords(); 
-		const Mesh& mesh = meshes.at(hit.instanceId()).mesh;
+		const Mesh& mesh = data->meshes.at(hit.instanceId()).mesh;
 		const Mesh::Tri& tri = mesh.getTriangles()[hit.triangleId()];
 		const auto& data = (mesh.*meshMember)(std::forward<Args>(args)...);
 		return uvs[0] * data[tri[0]] + uvs[1] * data[tri[1]] + uvs[2] * data[tri[2]];

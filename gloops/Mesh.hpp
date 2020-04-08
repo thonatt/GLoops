@@ -4,7 +4,6 @@
 #include <vector>
 #include <map>
 #include <any>
-#include <list>
 
 namespace gloops {
 
@@ -74,6 +73,8 @@ namespace gloops {
 		
 		std::vector<Mesh> extractComponents() const;
 
+		Mesh merge(const Mesh& other) const;
+
 		//virtual bool load(const std::string& path);
 
 		void computeVertexNormalsFromVertices();
@@ -107,11 +108,14 @@ namespace gloops {
 
 		//callback will be called whenever model is modified
 		template<typename F>
-		void addModelCallback(const std::string& name, F&& f) const;
+		size_t addModelCallback( F&& f) const;
 
 		//callback will be called whenever triangles or vertices are modified
 		template<typename F>
-		void addGeometryCallback(const std::string& name, F&& f) const;
+		size_t addGeometryCallback( F&& f) const;
+
+		void removeModelCallback(const size_t id);
+		void removeGeometryCallback(const size_t id);
 
 	protected:
 
@@ -121,7 +125,7 @@ namespace gloops {
 		void invalidateModel();
 		void invalidateGeometry();
 	
-		using Callbacks = std::map<std::string, Callback>;
+		using Callbacks = std::map<size_t, Callback>;
 
 		mutable std::shared_ptr<Callbacks> modelCallbacks, geometryCallbacks;
 
@@ -261,15 +265,21 @@ namespace gloops {
 	}
 
 	template<typename F>
-	inline void Mesh::addModelCallback(const std::string& name, F&& f) const
+	inline size_t Mesh::addModelCallback(F&& f) const
 	{
-		(*modelCallbacks)[name] = std::forward<F>(f);
+		static size_t id = 0;
+		++id;
+		modelCallbacks->emplace(id, std::forward<F>(f));
+		return id;
 	}
 
 	template<typename F>
-	inline void Mesh::addGeometryCallback(const std::string& name, F&& f) const
+	inline size_t Mesh::addGeometryCallback(F&& f) const
 	{
-		(*geometryCallbacks)[name] = std::forward<F>(f);
+		static size_t id = 0;
+		++id;
+		geometryCallbacks->emplace(id, std::forward<F>(f));
+		return id;
 	}
 
 	template<typename T>

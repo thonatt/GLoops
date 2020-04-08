@@ -167,6 +167,7 @@ namespace gloops {
 		}
 
 		glUseProgram(id);
+
 		for (const auto& uniform : uniforms) {
 			uniform->switchShader(id);
 			uniform->send();

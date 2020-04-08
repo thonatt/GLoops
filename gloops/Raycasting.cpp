@@ -52,45 +52,52 @@ namespace gloops {
 	{
 		return coords;
 	}
-
-	Raycaster::Raycaster() {
-
+	
+	Raycaster::Internal::Internal()
+	{
 		scene = ScenePtr(rtcNewScene(device()), rtcReleaseScene);
-		sceneReady = std::make_shared<bool>(false);
-
 		context = ContextPtr(new RTCIntersectContext());
 		rtcInitIntersectContext(context.get());
 		//context->flags = RTC_INTERSECT_CONTEXT_FLAG_INCOHERENT;
 	}
 
+	void Raycaster::Internal::setupMeshCallbacks(MeshRaycastingData& data)
+	{
+		data.geomCallbackId = data.mesh.addGeometryCallback([&] {
+			data.dirtyModel = true;
+			sceneReady = false;
+		});
+
+		data.modelCallbackId = data.mesh.addModelCallback([&] {
+			data.dirtyModel = true;
+			sceneReady = false;
+		});
+	}
+
+	Raycaster::Raycaster()
+		: data(std::make_shared<Internal>())
+	{
+
+	
+	}
+
 	Raycaster& Raycaster::operator=(const Raycaster& other)
 	{
-		scene = other.scene;
-		context = other.context;
-		meshes = other.meshes;
-		sceneReady = other.sceneReady;
-
-		for (const auto& mesh : meshes) {
-			setupMeshCallbacks(mesh.second);
-		}
-
+		data = other.data;
+		//data->setupAllMeshCallbacks();
 		return *this;
 	}
 
 	Raycaster::Raycaster(Raycaster&& other)
-		: scene(other.scene), context(other.context), meshes(other.meshes), sceneReady(other.sceneReady)
+		: data(other.data)
 	{
-		for (const auto& mesh : meshes) {
-			setupMeshCallbacks(mesh.second);
-		}
+		//data->setupAllMeshCallbacks();
 	}
 
 	Raycaster::Raycaster(const Raycaster& other)
-		: scene(other.scene), context(other.context), meshes(other.meshes), sceneReady(other.sceneReady)
+		: data(other.data)
 	{
-		for (const auto& mesh : meshes) {
-			setupMeshCallbacks(mesh.second);
-		}
+		//data->setupAllMeshCallbacks();
 	}
 
 	void Raycaster::addMeshInternal(const Mesh& mesh)
@@ -108,26 +115,13 @@ namespace gloops {
 		rtcSetGeometryInstancedScene(instance.get(), localScene.get());
 		rtcSetGeometryTimeStepCount(instance.get(), 1);
 
-		uint instance_id = rtcAttachGeometry(scene.get(), instance.get());
+		uint instance_id = rtcAttachGeometry(data->scene.get(), instance.get());
 
-		meshes[instance_id] = { mesh, instance, geometry, localScene };
+		data->meshes.emplace(instance_id, MeshRaycastingData(mesh, instance, geometry, localScene));
 
-		setupMeshCallbacks(meshes.at(instance_id));
+		data->setupMeshCallbacks(data->meshes.at(instance_id));
 		
-		*sceneReady = false;
-	}
-
-	void Raycaster::setupMeshCallbacks(const MeshRaycastingData& data)
-	{
-		data.mesh.addModelCallback("_gloops_mesh_to_raycaster_model_cb", [&] {
-			*data.dirtyModel = true;
-			*sceneReady = false;
-		});
-
-		data.mesh.addGeometryCallback("_gloops_mesh_to_raycaster_geometry_cb", [&] {
-			*data.dirtyModel = true;
-			*sceneReady = false;
-		});
+		data->sceneReady = false;
 	}
 
 	void Raycaster::errorCallback(void* userPtr, RTCError code, const char* str)
@@ -150,14 +144,14 @@ namespace gloops {
 
 	void Raycaster::checkScene() const
 	{
-		if (*sceneReady) {
+		if (data->sceneReady) {
 			return;
 		}
 
-		for (const auto& mesh : meshes) {
-			const auto& m = mesh.second;
+		for (auto& mesh : data->meshes) {
+			auto& m = mesh.second;
 
-			if (*m.dirtyGeometry) {
+			if (m.dirtyGeometry) {
 				using Triangle = Mesh::Tri;
 				using Vertice = Mesh::Vert;
 
@@ -177,20 +171,19 @@ namespace gloops {
 				}
 				rtcCommitGeometry(m.geometry.get());
 				rtcCommitScene(m.scene.get());
-				*m.dirtyGeometry = false;
+				m.dirtyGeometry = false;
 			}
 
-			if (*m.dirtyModel) {
+			if (m.dirtyModel) {
 				rtcSetGeometryTransform(m.instance.get(), 0, RTCFormat::RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, m.mesh.model().data());
 				rtcCommitGeometry(m.instance.get());
-
-				*m.dirtyModel = false;
+				m.dirtyModel = false;
 			}
 
 		}
 
-		rtcCommitScene(scene.get());
-		*sceneReady = true;
+		rtcCommitScene(data->scene.get());
+		data->sceneReady = true;
 	}
 
 	RTCDevice Raycaster::device()
@@ -232,7 +225,7 @@ namespace gloops {
 		RTCRayHit rayHit;
 		initRayHit(rayHit, ray, near, far);
 
-		rtcIntersect1(scene.get(), context.get(), &rayHit);
+		rtcIntersect1(data->scene.get(), data->context.get(), &rayHit);
 
 		return Hit(rayHit);
 	}
@@ -244,9 +237,20 @@ namespace gloops {
 		RTCRay eRay;
 		initRay(eRay, ray, near, far);
 
-		rtcOccluded1(scene.get(), context.get(), &eRay);
+		rtcOccluded1(data->scene.get(), data->context.get(), &eRay);
 
 		return eRay.tfar < 0;
+	}
+
+	Raycaster::MeshRaycastingData::MeshRaycastingData(Mesh _mesh, GeometryPtr _instance, GeometryPtr _geometry, ScenePtr _scene)
+		: mesh(_mesh), instance(_instance), geometry(_geometry), scene(_scene)
+	{
+	}
+
+	Raycaster::MeshRaycastingData::~MeshRaycastingData()
+	{
+		mesh.removeModelCallback(modelCallbackId);
+		mesh.removeGeometryCallback(geomCallbackId);
 	}
 
 }

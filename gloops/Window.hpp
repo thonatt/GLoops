@@ -44,9 +44,10 @@ namespace gloops {
 	public:
 		enum class Type { RENDERING, GUI, DEBUG, FLOATING = DEBUG };
 
-		using Func = std::function<void(const Window&)>;
+		using WinFunc = std::function<void(const Window&)>;
+		using MenuFunc = std::function<void()>;
 
-		WindowComponent(const std::string& name = "", Type type = Type::RENDERING, const Func& guiFunc = {});
+		WindowComponent(const std::string& name = "", Type type = Type::RENDERING, const WinFunc& guiFunc = {});
 
 		void show(const Window& win);
 		bool& isActive();
@@ -59,12 +60,16 @@ namespace gloops {
 
 		v4f backgroundColor = { 0,0,0,1 };
 
+		void setMenuFunc(MenuFunc&& fun);
+		void menuFunc() const;
+
 	protected:
 
 		static size_t counter;
 
 		std::string _name;
-		Func _guiFunc;
+		WinFunc _guiFunc;
+		MenuFunc _menuFunc;
 		Type _type = Type::RENDERING;
 		size_t id = 0;
 		bool _active = true, shouldResize = false, inFocus = false;
@@ -108,6 +113,7 @@ namespace gloops {
 	protected:
 
 		void keyboardCallback(GLFWwindow * win, int key, int scancode, int action, int mods);
+		void charCallback(GLFWwindow* win, unsigned int codepoint);
 		void mouseButtonCallback(GLFWwindow * win, int button, int action, int mods);
 		void mouseScrollCallback(GLFWwindow * win, double x, double y);
 		void mousePositionCallback(GLFWwindow * win, double x, double y);
@@ -129,13 +135,15 @@ namespace gloops {
 		mutable std::map<std::string, std::reference_wrapper<WindowComponent>> subWinsCurrent, subWinsNext;
 	};
 
-	//enum class WinFlags : uint {
-	//	UpdateWhenNotInFocus = 1 << 1
-	//};
-	//inline WinFlags operator| (WinFlags f, WinFlags g) { return (WinFlags)((uint)f | (uint)g); }
-	//inline bool operator& (WinFlags f, WinFlags g) { return (bool)((uint)f & (uint)g); }
+	enum class WinFlags : uint {
+		Default = 0,
+		UpdateWhenNotInFocus = 1 << 1
+	};
+	inline WinFlags operator| (WinFlags f, WinFlags g) { return (WinFlags)((uint)f | (uint)g); }
+	inline WinFlags operator& (WinFlags f, WinFlags g) { return (WinFlags)((uint)f & (uint)g); }
+	inline WinFlags operator~ (WinFlags f) { return (WinFlags)(~(uint)f); }
 
-	class SubWindow : public Input {
+	class SubWindow  {
 
 	public:
 		using UpdateFunc = std::function<void(const Input&)>;
@@ -147,11 +155,6 @@ namespace gloops {
 			const UpdateFunc& upFunc = {},
 			const RenderingFunc& renderFunc = {}
 		);
-
-		SubWindow(SubWindow&& other);
-		SubWindow(const SubWindow& other);
-		SubWindow& operator=(const SubWindow& other);
-		
 			
 		void setGuiFunction(const GuiFunc& guiFunction);
 		void setUpdateFunction(const UpdateFunc& upFunc);
@@ -159,39 +162,60 @@ namespace gloops {
 
 		void show(const Window & win);
 
-		//void setFlags(WinFlags _flags);
+		void setFlags(WinFlags flags);
 
 		bool& active();
 
-		v4f clearColor = { 0.1f, 0.1f, 0.1f, 1.0f };
-
-		bool updateWhenNoFocus = false;
+		v4f& clearColor();
 
 		WindowComponent& getRenderComponent();
 		WindowComponent& getGuiComponent();
 
+		void menuGui();
+
 	private:
-		void fitContent(v2d& outOffset, v2d& outSize, const v2d& vpSize, const v2d& availableSize);
-		std::string gui_text(const std::string& str) const;
-		void menuBar();
+
 		void debugWin();
-
-		void setupComponents();
-
-		Framebuffer framebuffer;
 		
-		GuiFunc guiFunc; 
-		UpdateFunc updateFunc;
-		RenderingFunc renderingFunc;
-
-		std::string win_name;
-		v2f gui_render_size;
 		//Viewport winviewport;
 
-		std::shared_ptr<WindowComponent> renderComponent, guiComponent;
+		struct Internal {
 
-		bool shouldUpdate = false, showGui = true,
-			showDebug = false;
+			Internal(
+				const std::string& name,
+				const v2i& renderingSize,
+				const GuiFunc& guiFunction,
+				const UpdateFunc& upFunc,
+				const RenderingFunc& renderFunc
+			);
+
+			static void fitContent(v2d& outOffset, v2d& outSize, const v2d& vpSize, const v2d& availableSize);
+
+			void debugWin();
+			void setupComponents();
+		
+			void menuGui();
+			std::string gui_text(const std::string& str) const;
+
+			std::shared_ptr<WindowComponent> renderComponent, guiComponent;
+			Framebuffer framebuffer;
+			Input input;
+
+			GuiFunc guiFunc;
+			UpdateFunc updateFunc;
+			RenderingFunc renderingFunc;
+
+			std::string win_name;
+			v4f clearColor = { 0.1f, 0.1f, 0.1f, 1.0f };
+			v2f gui_render_size;
+			WinFlags _flags = WinFlags::Default;
+
+			bool shouldUpdate = false, showGui = true,
+				showDebug = false;
+		};
+
+		std::shared_ptr<Internal> data;
+
 	};
 
 }

@@ -588,6 +588,52 @@ namespace gloops {
 		return out;
 	}
 
+	Mesh Mesh::merge(const Mesh& other) const
+	{
+		if (getTriangles().size() < other.getTriangles().size()) {
+			return other.merge(*this);
+		}
+
+		Mesh out;
+
+		const size_t v_size = getVertices().size(), t_size = getTriangles().size();
+
+		Vertices vs(getVertices());
+		vs.insert(vs.end(), other.getVertices().begin(), other.getVertices().end());
+		out.setVertices(vs);
+
+		Triangles ts(getTriangles());
+		ts.insert(ts.end(), other.getTriangles().begin(), other.getTriangles().end());
+
+		const v3u offset((GLuint)v_size, (GLuint)v_size, (GLuint)v_size);
+		for (size_t v_id = 0; v_id < other.getTriangles().size(); ++v_id) {
+			ts[t_size + v_id] += offset;
+		}
+		out.setTriangles(ts);
+
+		out.setTransform(transform());
+
+		if (!getNormals().empty() && !other.getNormals().empty()) {
+			Normals ns(getNormals());
+			ns.insert(ns.end(), other.getNormals().begin(), other.getNormals().end());
+			out.setNormals(ns);
+		}
+
+		if (!getUVs().empty() && !other.getUVs().empty()) {
+			UVs uvs(getUVs());
+			uvs.insert(uvs.end(), other.getUVs().begin(), other.getUVs().end());
+			out.setUVs(uvs);
+		}
+
+		if (!getColors().empty() && !other.getColors().empty()) {
+			Colors cs(getColors());
+			cs.insert(cs.end(), other.getColors().begin(), other.getColors().end());
+			out.setColors(cs);
+		}
+
+		return out;
+	}
+
 	//bool Mesh::load(const std::string& path)
 	//{
 	//	using namespace Assimp;
@@ -923,6 +969,20 @@ namespace gloops {
 	Mesh Mesh::getCube(const v3f& center, const v3f& halfDiag)
 	{
 		return getCube(Box(center - halfDiag, center + halfDiag));
+	}
+
+	void Mesh::removeModelCallback(const size_t id)
+	{
+		if (id) {
+			modelCallbacks->erase(id);
+		}
+	}
+
+	void Mesh::removeGeometryCallback(const size_t id)
+	{
+		if (id) {
+			geometryCallbacks->erase(id);
+		}
 	}
 
 	void Mesh::invalidateModel()

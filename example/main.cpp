@@ -22,7 +22,7 @@ static const std::string gloops_demo_shaders_folder = std::string(GLOOPS_DEMO_RE
 static const std::string gloops_demo_textures_folder = std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/textures/";
 static const std::string gloops_demo_meshes_folder = std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/meshes/";
 
-Texture checkers_tex = Texture(checkersTexture(80, 80, 10), texParams), perlinTex, 
+Texture checkers_tex = Texture(checkersTexture(100, 100, 10), texParams), perlinTex, 
 	kittenTex = Texture::fromPath2D(gloops_demo_textures_folder + "kitten.png", texParams),
 	skyCube = Texture::fromPathCube(gloops_demo_textures_folder + "sky.png", cubeParams);
 
@@ -231,7 +231,6 @@ SubWindow texture_subwin()
 	});
 
 	sub.getRenderComponent().backgroundColor = v4f(0.3f, 0.3f, 0.3f, 1.0f);
-	sub.updateWhenNoFocus = true;
 
 	return sub;
 }
@@ -246,10 +245,12 @@ SubWindow mesh_modes_subwin()
 		meshB = Mesh::getTorus(3, 1, precision).setTranslation(3 * v3f::UnitY()).setRotation(v3f(0, pi<float>() / 2, 0)),
 		meshC = Mesh::getSphere(precision).setScaling(3).setTranslation(-8 * v3f(0, 1, 0)),
 		meshD = Mesh::getCube().setScaling(2).setTranslation(v3f(-5, -5, 5)).setRotation(v3f(1, 1, 1)),
-		meshE = apple_banana.at(0),
-		meshF = apple_banana.at(1);
+		banana = apple_banana.at(0),
+		apple = apple_banana.at(1).merge(apple_banana.at(2)).merge(apple_banana.at(3)),
+		groundPlane = MeshGL::quad({ -20,0,0 }, { 0,100,0 }, { 0, 0,100 });
+	groundPlane.backface_culling = false;
 
-	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC, meshD, meshE, meshF);
+	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(meshA, meshB, meshC, meshD, banana, apple);
 
 	static Shader tcs_displacement = Shader(GL_TESS_CONTROL_SHADER, ShaderCollection::tcsTriInTerface()),
 		tev_displacement = Shader(GL_TESS_EVALUATION_SHADER, ShaderCollection::tevTriDisplacement());
@@ -271,8 +272,8 @@ SubWindow mesh_modes_subwin()
 		{ 1, { Mode::UVS, meshB } },
 		{ 2, { Mode::UVS, meshC } },
 		{ 3, { Mode::PHONG, meshD } },
-		{ 4, { Mode::PHONG, meshE } },
-		{ 5, { Mode::PHONG, meshF } }
+		{ 4, { Mode::PHONG, banana } },
+		{ 5, { Mode::PHONG, apple } }
 	};
 	static int selectedMesh = -1;
 	for (auto& m : meshes) {
@@ -292,10 +293,14 @@ SubWindow mesh_modes_subwin()
 
 	auto sub = SubWindow("Render modes", v2i(400, 400));
 
+	static v4f& bgColor = sub.getRenderComponent().backgroundColor, &clearColor = sub.clearColor();
+
 	sub.setGuiFunction([&] {
 		ImGui::Checkbox("Show AABBs", &showAllBB);
 		ImGui::SameLine();
-		ImGui::colPicker("Background color", sub.clearColor);
+		ImGui::colPicker("Background", bgColor);
+		ImGui::SameLine();
+		ImGui::colPicker("Clear", bgColor);
 
 		ImGui::Separator();
 
@@ -315,7 +320,6 @@ SubWindow mesh_modes_subwin()
 			ImGui::Checkbox("Vertex", &mesh.showVertexNormals);
 		}
 
-		ImGui::SameLine();
 		ImGui::Checkbox("Displacement", &mesh.displacement);
 		if (mesh.displacement) {
 			ImGui::SameLine();
@@ -341,38 +345,41 @@ SubWindow mesh_modes_subwin()
 			++mode_id;
 		}
 
-		static v3f pos, rot;
-		pos = meshGL.transform().translation();
-		if (ImGui::SliderFloat3("Translation", pos.data(), -10, 10)) {
-			meshGL.setTranslation(pos);
-		}
-		rot = meshGL.transform().eulerAngles();
-		if (ImGui::SliderFloat3("Rotation", rot.data(), -1.5f * pi<float>(), 1.5f * pi<float>())) {
-			meshGL.setRotation(rot);
-		}
-		static float scale;
-		scale = meshGL.transform().scaling()[0];
-		ImGui::ItemWithSize(175, [&] {
-			if (ImGui::SliderFloat("Scale", &scale, 0.01f, 10)) {
-				meshGL.setScaling(scale);
+		if (ImGui::TreeNode("Transformation")) {
+			static v3f pos, rot;
+			pos = meshGL.transform().translation();
+			if (ImGui::SliderFloat3("Translation", pos.data(), -10, 10)) {
+				meshGL.setTranslation(pos);
 			}
-
-			if (selectedMesh <= 2) {
-				ImGui::SameLine();
-				if (ImGui::SliderInt("Precision", &precision, 3, 50)) {
-					Mesh novelMesh;
-					if (selectedMesh == 2) {
-						novelMesh = Mesh::getSphere(precision);
-					} else {
-						novelMesh = Mesh::getTorus(3, 1, precision);
-					}
-					meshGL.setVertices(novelMesh.getVertices());
-					meshGL.setTriangles(novelMesh.getTriangles());
-					meshGL.setUVs(novelMesh.getUVs());
-					meshGL.setNormals(novelMesh.getNormals());
+			rot = meshGL.transform().eulerAngles();
+			if (ImGui::SliderFloat3("Rotation", rot.data(), -1.5f * pi<float>(), 1.5f * pi<float>())) {
+				meshGL.setRotation(rot);
+			}
+			static float scale;
+			scale = meshGL.transform().scaling()[0];
+			ImGui::ItemWithSize(175, [&] {
+				if (ImGui::SliderFloat("Scale", &scale, 0.01f, 10)) {
+					meshGL.setScaling(scale);
 				}
-			}
-		});
+
+				if (selectedMesh <= 2) {
+					ImGui::SameLine();
+					if (ImGui::SliderInt("Precision", &precision, 3, 50)) {
+						Mesh novelMesh;
+						if (selectedMesh == 2) {
+							novelMesh = Mesh::getSphere(precision);
+						} else {
+							novelMesh = Mesh::getTorus(3, 1, precision);
+						}
+						meshGL.setVertices(novelMesh.getVertices());
+						meshGL.setTriangles(novelMesh.getTriangles());
+						meshGL.setUVs(novelMesh.getUVs());
+						meshGL.setNormals(novelMesh.getNormals());
+					}
+				}
+			});
+			ImGui::TreePop();
+		}
 
 		if (ImGui::TreeNode("mesh infos")) {
 			std::stringstream vinfo, tinfo;
@@ -415,22 +422,24 @@ SubWindow mesh_modes_subwin()
 			ImGui::TreePop();
 		}
 
-		if (ImGui::TreeNode("vertex data attributes")) {
+		if (ImGui::TreeNode("gpu vertex attributes")) {
 			std::map<int, std::pair<std::string, VertexAttribute> > attributes_sorted_by_location;
 			for (const auto& attribute : meshGL.getAttributes()) {
 				attributes_sorted_by_location[attribute.second.index] = { attribute.first, attribute.second };
 			}
 			for (const auto& attribute : attributes_sorted_by_location) {
-				std::stringstream s;
 				const auto& att = attribute.second.second;
-				s << attribute.second.first << "\n";
-				s << "  location : " << att.index << "\n";
-				s << "  nchannels : " << att.num_channels << "\n";
-				s << "  sizeof attribute : " << 8 * att.total_num_bytes / meshGL.getVertices().size() << "\n";
-				s << "  stride : " << att.stride << "\n";
-				s << "  normalized : " << std::boolalpha << (bool)att.normalized << "\n";
-				s << "  data ptr : " << att.pointer << "\n";
-				ImGui::Text(s);
+				if (ImGui::TreeNode((attribute.second.first + "##gpu").c_str())) {
+					std::stringstream s;
+					s << "location : " << att.index << "\n";
+					s << "nchannels : " << att.num_channels << "\n";
+					s << "sizeof attribute : " << 8 * att.total_num_bytes / meshGL.getVertices().size() << "\n";
+					s << "stride : " << att.stride << "\n";
+					s << "normalized : " << std::boolalpha << (bool)att.normalized << "\n";
+					s << "data ptr : " << att.pointer << "\n";
+					ImGui::TreePop();
+					ImGui::Text(s);
+				}
 			}
 			ImGui::TreePop();
 		}
@@ -542,8 +551,12 @@ SubWindow mesh_modes_subwin()
 
 
 		}
+
+		shaders.renderTexturedMesh(eye, groundPlane, checkers_tex, 0.1f);
 		glDisable(GL_BLEND);
 	});
+
+	sub.clearColor() = v4f(0.8f, 0.8f, 0.8f, 1.0f);
 
 	return sub;
 }
@@ -583,7 +596,7 @@ SubWindow rayTracingWin()
 	static auto hitMask = [&](int x, int y) { return (bool)hits.at(x, y); };
 
 	static Trackballf tb = Trackballf::fromMeshComputingRaycaster(outerBox).setLookAt(v3f(0.8f, 0.5f, 2.3f), v3f::Zero());
-	static Cameraf previousCam;
+	static RaycastingCameraf currentCam, previousCam;
 
 	static Image3f currentSamplesAverage;
 	static Texture tex;
@@ -600,7 +613,7 @@ SubWindow rayTracingWin()
 	static int numBounces = 2, maxNumSamples = 8, samplesPerPixel = 1, currentNumSamples = 0, maxNumThreads = 4;
 	static bool resetRayCasting = true, useMT = false;
 
-	static const int w = 360, h = 240;
+	static const int w = 128, h = 128;
 	
 	SubWindow sub = SubWindow("Ray tracing", v2i(600, 600));
 
@@ -619,7 +632,7 @@ SubWindow rayTracingWin()
 		ImGui::Separator();
 		ImGui::ItemWithSize(150, [] {
 			resetRayCasting |= ImGui::SliderInt("num bounces", &numBounces, 1, 3);
-			resetRayCasting |= ImGui::SliderInt("max samples per pixel", &maxNumSamples, 1, 128);
+			resetRayCasting |= ImGui::SliderInt("max samples per pixel", &maxNumSamples, 1, 256);
 
 			resetRayCasting |= ImGui::Checkbox(
 				("use multi-threading, " + std::to_string(std::thread::hardware_concurrency()) + " available cores").c_str(),
@@ -661,36 +674,28 @@ SubWindow rayTracingWin()
 				gatherPaths = false;
 			}
 		}
-	});
 
-	sub.setRenderingFunction([&](Framebuffer& dst) {
 		hits.resize(w, h);
 		currentSamplesAverage.resize(w, h);
 
-		RaycastingCameraf cam = RaycastingCameraf(tb.getCamera(), w, h);
-		const bool sameCam = (previousCam == cam);
+		currentCam = RaycastingCameraf(tb.getCamera(), w, h);
+		const bool sameCam = (previousCam == currentCam);
 		resetRayCasting |= (!sameCam);
 		gatherPaths &= sameCam;
-
-		if (gatherPaths) {
-			ImGui::BeginTooltip();
-			ImGui::Text("collecting paths");
-			ImGui::EndTooltip();
-		}
 
 		if (resetRayCasting) {
 			currentNumSamples = 0;
 			currentSamplesAverage.setTo(v3f(0, 0, 0));
 			hits.setTo(Vec<uchar, 1>(1));
 			resetRayCasting = false;
-		} 
+		}
 
 		auto rowJob = [&](int i) {
 			for (int j = 0; j < w; ++j) {
 				int numSamples = currentNumSamples;
-				
+
 				for (int s = 0; s < samplesPerPixel; ++s) {
-					Ray ray = cam.getRay(v2f(j, h - 1 - i) + 0.5 * (randomVec<float,2>() + v2f(1, 1)));
+					Ray ray = currentCam.getRay(v2f(j, h - 1 - i) + 0.5 * (randomVec<float, 2>() + v2f(1, 1)));
 
 					bool continueRT = true;
 					v3f sampleColor = v3f::Zero();
@@ -707,9 +712,9 @@ SubWindow rayTracingWin()
 						}
 
 						float d = hit.distance();
-						v3f p = ray.pointAt(d);
-						v3f n = raycaster.interpolate(hit, &Mesh::getNormals).normalized();
-						v3f col = raycaster.interpolate(hit, &Mesh::getColors);
+						const v3f p = ray.pointAt(d);
+						const v3f n = raycaster.interpolate(hit, &Mesh::getNormals).normalized();
+						const v3f col = raycaster.interpolate(hit, &Mesh::getColors);
 
 						switch (mode) {
 						case Mode::DEPTH: {
@@ -730,7 +735,7 @@ SubWindow rayTracingWin()
 								sampleColor = lightColor;
 								continueRT = false; continue;
 							}
-							
+
 							color = 0.9 * color.cwiseProduct(col);
 
 							const v3f randomLightPos = surfaceLightPosition();
@@ -742,7 +747,7 @@ SubWindow rayTracingWin()
 								const float attenuation = std::clamp<float>(1.0f - (distToLight * distToLight) / (2.5f * 2.5f), 0, 1);
 
 								v3f illumination = (diffuse * attenuation) * lightColor;
-								
+
 								//sampleColor += color.cwiseProduct(illumination);
 
 								sampleColor += color.cwiseProduct(lightColor) * diffuse;
@@ -752,8 +757,8 @@ SubWindow rayTracingWin()
 									paths.push_back(p);
 									normals.push_back(p);
 									normals.push_back(p + 0.1 * n);
-									colors.push_back(color.cwiseProduct(lightColor)* diffuse);
-									colors.push_back(color.cwiseProduct(lightColor)* diffuse);
+									colors.push_back(color.cwiseProduct(lightColor) * diffuse);
+									colors.push_back(color.cwiseProduct(lightColor) * diffuse);
 								}
 							}
 						}
@@ -769,10 +774,10 @@ SubWindow rayTracingWin()
 				}
 			}
 		};
-	
+
 		if (currentNumSamples < maxNumSamples) {
 			raycaster.checkScene();
-			if (useMT) {			
+			if (useMT) {
 				parallelForEach(0, h, [&](int i) {
 					rowJob(i);
 				}, maxNumThreads);
@@ -783,7 +788,7 @@ SubWindow rayTracingWin()
 			}
 
 			currentNumSamples += samplesPerPixel;
-			previousCam = cam;
+			previousCam = currentCam;
 
 			Image3b img;
 			switch (mode)
@@ -805,16 +810,27 @@ SubWindow rayTracingWin()
 			gatherPaths = false;
 		}
 
-		dst.blitFrom(tex);
+	});
 
-		dst.bindDraw();
+	sub.setRenderingFunction([&](Framebuffer& dst) {
+		if (gatherPaths) {
+			ImGui::BeginTooltip();
+			ImGui::Text("Collecting paths");
+			ImGui::EndTooltip();
+		}
+
+		dst.blitFrom(tex);
 		if (showPaths) {		
 			auto meshPaths = MeshGL::fromEndPoints(paths);
 			meshPaths.setColors(colors);
-			shaders.renderColoredMesh(cam, meshPaths);
-			shaders.renderBasicMesh(cam, MeshGL::fromEndPoints(normals), v3f(0, 1, 0));
+
+			dst.bindDraw();
+			shaders.renderColoredMesh(currentCam, meshPaths);
+			shaders.renderBasicMesh(currentCam, MeshGL::fromEndPoints(normals), v3f(0, 1, 0));
 		}
 	});
+
+	sub.setFlags(WinFlags::UpdateWhenNotInFocus);
 
 	return sub;
 }
@@ -829,7 +845,7 @@ SubWindow raymarching_win()
 	};
 	static Mode mode = Mode::GRID;
 
-	SubWindow win = SubWindow("raymarching", v2i(400, 400));
+	SubWindow win = SubWindow("Ray Marching", v2i(400, 400));
 
 	static Trackballf tb = Trackballf::fromMesh(MeshGL::getCube().setScaling(0.3f));
 	tb.setFar(200);
@@ -848,19 +864,19 @@ SubWindow raymarching_win()
 	
 	shaderRaymarching.init(
 		gloops::ShaderCollection::vertexMeshInterface(), 
-		gloops::loadFile(std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/shaders/voxel_grid_raymarching.frag")
+		gloops::loadFile(gloops_demo_shaders_folder + "voxel_grid_raymarching.frag")
 	);
 	shaderRaymarching.addUniforms(shaders.vp, shaders.model, eye_pos, bmin, bmax, gridSize, intensity);
 
 	shaderSlice.init(
 		gloops::ShaderCollection::vertexMeshInterface(),
-		gloops::loadFile(std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/shaders/texture3D_slice.frag")
+		gloops::loadFile(gloops_demo_shaders_folder +  "texture3D_slice.frag")
 	);
 	shaderSlice.addUniforms(shaders.vp, shaders.model, bmin, bmax);
 
 	shaderSDF.init(
 		gloops::ShaderCollection::vertexMeshInterface(),
-		gloops::loadFile(std::string(GLOOPS_DEMO_RESOURCES_PATH) + "/shaders/texture3D_sdf.frag")
+		gloops::loadFile(gloops_demo_shaders_folder + "texture3D_sdf.frag")
 	);
 	shaderSDF.addUniforms(shaders.vp, shaders.model, eye_pos, bmin, bmax, gridSize, sdf_offset);
 
@@ -901,15 +917,16 @@ SubWindow raymarching_win()
 		if (ImGui::SliderInt("grid size", &gridSize.get()[0], 1, 512)) {
 			gridSize = gridSize.get()[0] * v3i(1, 1, 1);
 		}
-		if (mode == Mode::GRID) {
+
+		switch (mode)
+		{
+		case Mode::SLICE:
+			ImGui::SliderFloat("slice range", &slice_range, -.5f, .5f);  break;
+		case Mode::ISOSURFACE:
+			ImGui::SliderFloat("isosurface value", &sdf_offset.get(), 0.01f, 0.99f);
+		default:
 			ImGui::SliderFloat("intensity", &intensity.get(), 2, 4);
 		}
-		if (mode == Mode::SLICE) {
-			ImGui::SliderFloat("slice range", &slice_range, -.5f, .5f);
-		}
-		if (mode == Mode::ISOSURFACE) {
-			ImGui::SliderFloat("isosurface value", &sdf_offset.get(), 0.01f, 0.99f);
-		}	
 	});
 
 	win.setRenderingFunction([&](Framebuffer& dst) {
@@ -922,7 +939,7 @@ SubWindow raymarching_win()
 		dst.clear();
 		dst.bindDraw();
 
-		shaders.renderCubemap(eye, { 0,0,0 }, 100, skyCube);
+		shaders.renderCubemap(eye, v3f(0, 0, 0), 100, skyCube);
 
 		eye_pos = eye.position();
 		shaders.vp = eye.viewProj();
@@ -979,5 +996,4 @@ int main(int argc, char** argv)
 
 		demoOptions.show(mainWin);
 	});
-
 }
